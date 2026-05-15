@@ -115,10 +115,67 @@ void UpdateDefensiveUnit(FUnitState& u, FSimWorldState& s, int teamId) {
 }
 
 // ---------------------------------------------------------------------------
-// Task T5.3 — UpdateMidfieldUnit  (stub — filled in T5.3)
+// Task T5.3 — UpdateMidfieldUnit
 // ---------------------------------------------------------------------------
 
-void UpdateMidfieldUnit(FUnitState&, FSimWorldState&, int)  {}
+void UpdateMidfieldUnit(FUnitState& u, FSimWorldState& s, int teamId) {
+    Fixed64 sumX  = Fixed64::FromInt(0);
+    int     count = 0;
+    for (int i = 0; i < kSimPlayerCount; ++i) {
+        const auto& p = s.Players[i];
+        if (p.TeamId != teamId) continue;
+        if (UnitOf((ERole)p.RoleId) != 1) continue;
+        sumX = sumX + p.Position.X;
+        ++count;
+    }
+    if (count > 0) u.LineY = Fixed64::FromRaw(sumX.Raw / count);
+
+    // Press: only when opp has the ball AND it's in the central channel
+    // (|ball.Y| < 1/3 pitch width).
+    const Fixed64 centralChannel = SimConst::PitchHalfWid / Fixed64::FromInt(3);
+    bool oppHasBall = (s.Match.PossessionTeam != (uint8_t)teamId
+                        && s.Match.PossessionTeam != 0xFF);
+    if (oppHasBall && Abs(s.Ball.Position.Y).Raw < centralChannel.Raw) {
+        u.PressTrigger = 1;
+        int     bestIdx = 0xFF;
+        Fixed64 bestSq  = Fixed64::FromInt(99999999);
+        for (int i = 0; i < kSimPlayerCount; ++i) {
+            const auto& p = s.Players[i];
+            if (p.TeamId != teamId) continue;
+            if (UnitOf((ERole)p.RoleId) != 1) continue;
+            Fixed64 dx = p.Position.X - s.Ball.Position.X;
+            Fixed64 dy = p.Position.Y - s.Ball.Position.Y;
+            constexpr int64_t kMaxDelta = (int64_t)15000 << 32;
+            if (dx.Raw >  kMaxDelta) dx.Raw =  kMaxDelta;
+            if (dx.Raw < -kMaxDelta) dx.Raw = -kMaxDelta;
+            if (dy.Raw >  kMaxDelta) dy.Raw =  kMaxDelta;
+            if (dy.Raw < -kMaxDelta) dy.Raw = -kMaxDelta;
+            Fixed64 dSq = dx * dx + dy * dy;
+            if (dSq.Raw < bestSq.Raw) { bestSq = dSq; bestIdx = i; }
+        }
+        u.PressTargetIdx = (uint8_t)bestIdx;
+    } else {
+        u.PressTrigger   = 0;
+        u.PressTargetIdx = 0xFF;
+    }
+
+    // Compactness — same proxy as defense.
+    if (count > 1) {
+        Fixed64 meanX = u.LineY;
+        Fixed64 sumSq = Fixed64::FromInt(0);
+        for (int i = 0; i < kSimPlayerCount; ++i) {
+            const auto& p = s.Players[i];
+            if (p.TeamId != teamId) continue;
+            if (UnitOf((ERole)p.RoleId) != 1) continue;
+            Fixed64 d = p.Position.X - meanX;
+            sumSq = sumSq + d * d;
+        }
+        Fixed64 var = Fixed64::FromRaw(sumSq.Raw / count);
+        Fixed64 std = SimMath::Sqrt(var);
+        u.Compactness = Fixed32::FromRaw((int32_t)(std.Raw * Fixed32::One / Fixed64::FromInt(1000).Raw));
+    }
+    u.OverlapTriggerIdx = 0xFF;
+}
 
 // ---------------------------------------------------------------------------
 // Task T5.4 — UpdateAttackUnit  (stub — filled in T5.4)
