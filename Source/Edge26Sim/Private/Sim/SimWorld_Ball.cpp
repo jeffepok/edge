@@ -29,15 +29,21 @@ void StepBall(FSimBallState& b) {
         b.Position.Z = SimConst::BallRadius;
         if (b.Velocity.Z.Raw < 0) {
             Fixed64 absVz{-b.Velocity.Z.Raw};
-            if (absVz.Raw < SimConst::SettleThreshold.Raw) {
-                // Settle.
+            Fixed64 postBounceVz = absVz * SimConst::Restitution;
+            // Settle when the post-bounce velocity can't lift the ball above the
+            // floor for even one tick (i.e., gravity wins immediately). This
+            // is the physically-correct criterion; SettleThreshold is a coarse
+            // safety net for very-slow direct contacts.
+            Fixed64 gravityKick = SimConst::Gravity * SimConst::DT;
+            bool settle = (postBounceVz.Raw <= gravityKick.Raw) ||
+                          (absVz.Raw < SimConst::SettleThreshold.Raw);
+            if (settle) {
                 b.Velocity.Z = Fixed64::FromRaw(0);
                 b.Velocity.X = b.Velocity.X * SimConst::GroundFrictionXY;
                 b.Velocity.Y = b.Velocity.Y * SimConst::GroundFrictionXY;
                 b.Flags |= BallFlag::Grounded;
             } else {
-                // Bounce.
-                b.Velocity.Z = absVz * SimConst::Restitution;
+                b.Velocity.Z = postBounceVz;
                 b.Velocity.X = b.Velocity.X * SimConst::GroundFrictionXY;
                 b.Velocity.Y = b.Velocity.Y * SimConst::GroundFrictionXY;
                 b.Flags &= ~BallFlag::Grounded;
