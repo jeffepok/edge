@@ -10,6 +10,9 @@
 #include "GameFramework/PlayerStart.h"
 #include "TimerManager.h"
 #include "Edge26.h"
+#if !UE_BUILD_SHIPPING
+#include "Debug/Edge26CheatManager.h"
+#endif
 
 ASoccerGameMode::ASoccerGameMode()
 {
@@ -127,4 +130,16 @@ int32 ASoccerGameMode::GetScore(int32 TeamId) const
 float ASoccerGameMode::GetMatchTimeRemaining() const
 {
 	return MatchClock;
+}
+
+void ASoccerGameMode::PostLogin(APlayerController* NewPlayer)
+{
+	Super::PostLogin(NewPlayer);
+#if !UE_BUILD_SHIPPING
+	if (NewPlayer)
+	{
+		NewPlayer->CheatClass = UEdge26CheatManager::StaticClass();
+		NewPlayer->EnableCheats();
+	}
+#endif
 }
