@@ -67,5 +67,9 @@ inline FixedVec3 CellCenter(int cellIdx) {
 // Update entry point — called once per sim tick from SimWorld::Step.
 struct FSimWorldState;  // forward
 void UpdateSpatialFields(FSimWorldState& state);
+void UpdateSpaceField(FSimWorldState& s, int teamId);
+void UpdateDefCoverageField(FSimWorldState& s, int teamId);
+void UpdateLaneOccupancyField(FSimWorldState& s);
+void UpdateThreatField(FSimWorldState& s, int teamId);
 
 }  // namespace edge26

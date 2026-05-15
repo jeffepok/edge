@@ -7,8 +7,13 @@
 #include "TestHarness.h"
 #include <cstring>
 
+// Forward declarations for field update functions (also declared in SpatialValueModel.h,
+// but re-declared here for clarity with the test file).
 namespace edge26 {
     void UpdateSpaceField(FSimWorldState& s, int teamId);
+    void UpdateDefCoverageField(FSimWorldState& s, int teamId);
+    void UpdateLaneOccupancyField(FSimWorldState& s);
+    void UpdateThreatField(FSimWorldState& s, int teamId);
 }
 
 using namespace edge26;
@@ -345,6 +350,28 @@ TEST_CASE(SpatialModel_CellIndexClampsOutOfBounds) {
     return 0;
 }
 
+// ----- T2.3: UpdateDefCoverageField -----
+
+TEST_CASE(SpatialModel_DefCoverageHighWhereTeammatesScarce) {
+    using namespace edge26;
+    SimWorld w{1};
+    auto& state = w.MutableState();
+    // Move all home players (team 0) to one corner, far from everything else.
+    for (int i = 0; i < 11; ++i) {
+        state.Players[i].Position = FixedVec3{
+            Fixed64::FromInt(-5000), Fixed64::FromInt(-3000), Fixed64::FromInt(0)
+        };
+    }
+    UpdateDefCoverageField(state, 0);  // home team's coverage from their perspective
+    // A cell at the OPPOSITE corner has very poor coverage → field value should be high.
+    int oppCorner = CellIndex(FixedVec3{
+        Fixed64::FromInt(5000), Fixed64::FromInt(3000), Fixed64::FromInt(0)
+    });
+    Fixed32 v = state.Spatial.Cells[0][(int)ESpatialField::DefCoverage][oppCorner];
+    TEST_EXPECT_TRUE(v.Raw > (Fixed32::One * 3 / 4));  // > 0.75
+    return 0;
+}
+
 int RunSnapshotTests() {
     TEST_RUN(WorldState_Sizes);
     TEST_RUN(WorldState_Aligned);
@@ -366,5 +393,6 @@ int RunSnapshotTests() {
     TEST_RUN(SpatialModel_SpaceFieldZeroAtOpponent);
     TEST_RUN(SpatialModel_CellIndexRoundtrip);
     TEST_RUN(SpatialModel_CellIndexClampsOutOfBounds);
+    TEST_RUN(SpatialModel_DefCoverageHighWhereTeammatesScarce);
     return 0;
 }

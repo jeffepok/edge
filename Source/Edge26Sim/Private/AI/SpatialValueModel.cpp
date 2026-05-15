@@ -60,4 +60,30 @@ void UpdateSpaceField(FSimWorldState& s, int teamId) {
     }
 }
 
+void UpdateDefCoverageField(FSimWorldState& s, int teamId) {
+    auto& field = s.Spatial.Cells[teamId][(int)ESpatialField::DefCoverage];
+    for (int c = 0; c < kPitchCells; ++c) {
+        FixedVec3 cellPos = CellCenter(c);
+        Fixed64 minDistSq = kSaturationSq;  // cap; beyond = fully open (poorly covered)
+        for (int i = 0; i < kSimPlayerCount; ++i) {
+            const FSimPlayerState& mate = s.Players[i];
+            if (mate.TeamId != (uint8_t)teamId) continue;     // teammates only
+            // Clamp each axis delta before squaring to avoid Fixed64 overflow.
+            int64_t dx_cm = mate.Position.X.ToInt() - cellPos.X.ToInt();
+            int64_t dy_cm = mate.Position.Y.ToInt() - cellPos.Y.ToInt();
+            if (dx_cm >  kSaturationCm || dx_cm < -kSaturationCm ||
+                dy_cm >  kSaturationCm || dy_cm < -kSaturationCm) {
+                // Beyond saturation radius — treat as max distance (fully uncovered).
+                continue;
+            }
+            Fixed64 dX = mate.Position.X - cellPos.X;
+            Fixed64 dY = mate.Position.Y - cellPos.Y;
+            Fixed64 distSq = dX * dX + dY * dY;
+            if (distSq.Raw < minDistSq.Raw) minDistSq = distSq;
+        }
+        // High value = poorly covered (far from any teammate).
+        field[c] = DistanceToOpenness(minDistSq);
+    }
+}
+
 }  // namespace edge26
