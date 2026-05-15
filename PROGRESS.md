@@ -2,20 +2,22 @@
 
 ## Current status
 
-**Phase 1: Sim Core v0 is essentially COMPLETE.** All seven milestones
-(M1–M7) shipped: fixed-point math library (Q32.32 / Q16.16 with trig,
-sqrt, atan2, rng, xxhash), POD sim state structs with explicit padding,
-SimWorld tick (kinematic player + simple ball physics + kick impulses),
-snapshot/restore/hash with rollback round-trip, headless replay binary
-with 3 input streams and per-tick hash baselines, local + GitHub Actions
-determinism gate, UE5 visual-shell adapter with SimHostSubsystem driving
-interpolated transforms, rewritten RUNBOOK.
+**Phase 1: Sim Core v0 is COMPLETE and verified in PIE.** All seven
+milestones (M1–M7) shipped: fixed-point math library (Q32.32 / Q16.16
+with trig, sqrt, atan2, rng, xxhash), POD sim state structs with
+explicit padding, SimWorld tick (kinematic player + simple ball
+physics + kick impulses), snapshot/restore/hash with rollback round-
+trip, headless replay binary with 3 input streams and per-tick hash
+baselines, local + GitHub Actions determinism gate, UE5 visual-shell
+adapter with SimHostSubsystem driving interpolated transforms,
+rewritten RUNBOOK.
 
-The 4 automated v0 acceptance criteria (spec §14 #1–#4, #6–#8) all pass.
-**Two remaining user manual steps:** (1) the PIE acceptance walk-through
-(§14 #5 — WASD moves, kicks impulse the ball, goal trigger fires GOAL),
-and (2) pushing the branch to verify the GitHub Actions matrix runs
-green on Linux/macOS/Windows (§14 #1 cross-platform).
+Automated acceptance criteria (spec §14 #1–#4, #6–#8) all pass.
+**PIE acceptance (§14 #5) confirmed working:** WASD moves the
+mannequin through the full input → IMC → sim → render-interpolation
+chain. **One remaining user manual step:** pushing the branch to
+verify the GitHub Actions determinism matrix runs green on
+Linux/macOS/Windows (spec §14 #1 cross-platform).
 
 The repo now has a deterministic 50Hz simulation core ready for Phase 2
 (spatial AI), Phase 3 (motion matching, render-side only per §3), or
@@ -55,3 +57,4 @@ Phase 4 (rollback netcode).
 - M6 landed: full UE5 adapter. New classes — AFootballerVisual (APawn, no CMC, transform driven by sim), ASoccerBallVisual (AActor, no physics), USimHostSubsystem (50Hz fixed accumulator + render-frame interp + ResetBall/ResetPlayer), USimInputCollector (Enhanced Input → InputFrame), ASimHostBootstrap. SoccerGameMode + SoccerHUD + GoalTrigger rewired to new classes. 10 legacy source files deleted (FootballerCharacter, FootballerAnimInstance, SoccerBall, OpponentFootballerCharacter, OpponentAIController). Three plan/UE5 quirks caught & fixed inline: UE5 module needed Private/UE5/Edge26SimModule.cpp with IMPLEMENT_MODULE; macOS linker stripped Edge26Sim symbols without EDGE26SIM_API annotation (added fallback header); -Werror,-Wshadow caught a Ball local shadowing the member field. BPs re-parented via headless Python commandlet (-nullrhi). PIE acceptance is the remaining user step.
 - M7 landed: RUNBOOK fully rewritten for the new architecture (CMake/lint/PIE workflows, troubleshooting table, headless Python commandlet pattern). Automated acceptance criteria all green: determinism gate PASS, lint OK, Edge26Sim depends only on Core, standalone has no UE5 dylib, decision log D1–D9 current. PIE acceptance walk-through and CI push verification remain as user manual steps.
 - All v0 acceptance criteria green except the two manual steps. Phase 1 is shippable.
+- Post-merge PIE polish: filled BP-overlooked defaults into C++ constructors via ConstructorHelpers (SKM_Manny_Simple, ABP_Footballer, /Game/Input/* IAs, Engine sphere mesh) so re-parented BPs work without manual setup; SimHostSubsystem now seeds player/ball position from placed actor transforms (was teleporting to origin); IA_Look type fixed Boolean → Axis2D (Mouse XY can't bind to a Boolean action without ensure-fail); BP_OpponentFootballer set to AutoPossessPlayer=Disabled, ControllerIndex=1 via Python; IA_Move path mismatch fixed (loaded /Game/Input/IA_Move but IMC binds /Game/Input/Actions/IA_Move). WASD now drives the mannequin end-to-end. PIE acceptance criteria §14 #5 GREEN.

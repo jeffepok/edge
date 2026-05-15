@@ -2,6 +2,8 @@
 #include "Adapter/SimHostSubsystem.h"
 #include "Adapter/FootballerVisual.h"
 #include "Adapter/SoccerBallVisual.h"
+#include "Edge26.h"
+#include "GameFramework/PlayerController.h"
 #include <cstring>
 
 using namespace edge26;

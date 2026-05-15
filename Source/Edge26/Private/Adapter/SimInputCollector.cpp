@@ -20,8 +20,10 @@ USimInputCollector::USimInputCollector()
 		TEXT("/Game/Input/IMC_Player.IMC_Player"));
 	if (IMCFinder.Succeeded()) DefaultMappingContext = IMCFinder.Object;
 
+	// IMPORTANT: there are two IA_Move assets in the project (/Game/Input/IA_Move
+	// and /Game/Input/Actions/IA_Move). IMC_Player binds to the latter. Match it.
 	static ConstructorHelpers::FObjectFinder<UInputAction> IA_Move_Finder(
-		TEXT("/Game/Input/IA_Move.IA_Move"));
+		TEXT("/Game/Input/Actions/IA_Move.IA_Move"));
 	if (IA_Move_Finder.Succeeded()) IA_Move = IA_Move_Finder.Object;
 
 	static ConstructorHelpers::FObjectFinder<UInputAction> IA_Sprint_Finder(
@@ -44,27 +46,16 @@ USimInputCollector::USimInputCollector()
 void USimInputCollector::BeginPlay()
 {
 	Super::BeginPlay();
-
-	APawn* Pawn = Cast<APawn>(GetOwner());
-	UE_LOG(LogEdge26, Warning, TEXT("SimInputCollector::BeginPlay owner=%s controller=%s IMC=%s IA_Move=%s"),
-		Pawn ? *Pawn->GetName() : TEXT("null"),
-		Pawn && Pawn->GetController() ? *Pawn->GetController()->GetName() : TEXT("null"),
-		DefaultMappingContext ? *DefaultMappingContext->GetName() : TEXT("null"),
-		IA_Move ? *IA_Move->GetName() : TEXT("null"));
-
 	RegisterMappingContext();
-
-	if (Pawn)
+	if (APawn* Pawn = Cast<APawn>(GetOwner()))
 	{
-		UE_LOG(LogEdge26, Warning, TEXT("SimInputCollector pawn InputComponent=%s"),
-			Pawn->InputComponent ? *Pawn->InputComponent->GetClass()->GetName() : TEXT("null"));
 		if (auto* Input = Cast<UEnhancedInputComponent>(Pawn->InputComponent))
 		{
 			Bind(Input);
 		}
 		else
 		{
-			UE_LOG(LogEdge26, Error, TEXT("SimInputCollector: Pawn->InputComponent is not UEnhancedInputComponent — input won't bind"));
+			UE_LOG(LogEdge26, Verbose, TEXT("SimInputCollector: Pawn->InputComponent is not UEnhancedInputComponent (pawn not player-possessed?)"));
 		}
 	}
 }
@@ -72,24 +63,15 @@ void USimInputCollector::BeginPlay()
 void USimInputCollector::RegisterMappingContext()
 {
 	APawn* Pawn = Cast<APawn>(GetOwner());
-	if (!Pawn) { UE_LOG(LogEdge26, Error, TEXT("RegisterMappingContext: owner not a pawn")); return; }
+	if (!Pawn) return;
 	APlayerController* PC = Cast<APlayerController>(Pawn->GetController());
-	if (!PC) { UE_LOG(LogEdge26, Error, TEXT("RegisterMappingContext: pawn has no PlayerController (yet)")); return; }
+	if (!PC) return;  // AI-possessed pawns don't add the player mapping context.
 	if (auto* Sub = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PC->GetLocalPlayer()))
 	{
 		if (DefaultMappingContext)
 		{
 			Sub->AddMappingContext(DefaultMappingContext, 0);
-			UE_LOG(LogEdge26, Warning, TEXT("RegisterMappingContext: added IMC %s"), *DefaultMappingContext->GetName());
 		}
-		else
-		{
-			UE_LOG(LogEdge26, Error, TEXT("RegisterMappingContext: DefaultMappingContext is null"));
-		}
-	}
-	else
-	{
-		UE_LOG(LogEdge26, Error, TEXT("RegisterMappingContext: no EnhancedInputLocalPlayerSubsystem"));
 	}
 }
 
@@ -126,11 +108,8 @@ static int32 ControllerIndexOf(const UActorComponent* Self)
 
 void USimInputCollector::OnMove(const FInputActionValue& Value)
 {
-	FVector2D v = Value.Get<FVector2D>();
-	const int32 idx = ControllerIndexOf(this);
-	// Diagnostic — temporary. Bump back to VeryVerbose once input is confirmed working.
-	UE_LOG(LogEdge26, Warning, TEXT("OnMove idx=%d v=(%.3f, %.3f)"), idx, v.X, v.Y);
-	if (auto* H = HostFor(this)) H->SetMoveInput(idx, v);
+	const FVector2D v = Value.Get<FVector2D>();
+	if (auto* H = HostFor(this)) H->SetMoveInput(ControllerIndexOf(this), v);
 }
 
 void USimInputCollector::OnSprint(const FInputActionValue&)

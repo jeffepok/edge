@@ -4,41 +4,35 @@ lines = []
 def out(s):
     lines.append(str(s))
 
-def inspect_ia(path):
-    ia = unreal.EditorAssetLibrary.load_asset(path)
-    if not ia:
-        out(f"  IA not found: {path}")
-        return
-    name = ia.get_name()
+imc = unreal.EditorAssetLibrary.load_asset("/Game/Input/IMC_Player")
+data = imc.get_editor_property("default_key_mappings")
+mappings = data.get_editor_property("mappings") or []
+out(f"=== IMC_Player has {len(mappings)} mappings ===")
+
+for i, m in enumerate(mappings):
+    action = m.get_editor_property("action")
+    action_name = action.get_name() if action else "?"
+    value_type = str(action.value_type) if action else "?"
+    key = m.get_editor_property("key")
+    # FKey has a key_name FName
+    key_name = "<unset>"
     try:
-        value_type = str(ia.value_type)
+        key_name = key.export_text()
     except Exception as e:
-        value_type = f"?({e})"
-    out(f"=== {name} ({value_type}) at {path} ===")
-
-    for attr in ["modifiers", "default_modifiers", "triggers", "default_triggers"]:
         try:
-            v = ia.get_editor_property(attr)
-            if v is None:
-                continue
-            n = len(v) if hasattr(v, "__len__") else None
-            out(f"  {attr}: type={type(v).__name__} len={n}")
-            for i, item in enumerate(v or []):
-                if item:
-                    out(f"    [{i}] {item.get_class().get_name()}")
-        except Exception:
-            pass
+            key_name = key.get_editor_property("key_name")
+        except Exception as e2:
+            key_name = f"<err {e} / {e2}>"
 
-for p in [
-    "/Game/Input/Actions/IA_Move",
-    "/Game/Input/IA_Look",
-    "/Game/Input/IA_Sprint",
-    "/Game/Input/IA_Pass",
-    "/Game/Input/IA_Shoot",
-    "/Game/Input/IA_Chip",
-]:
-    inspect_ia(p)
+    # also dump dir of the key
+    if i == 0:
+        out(f"  FKey dir: {[a for a in dir(key) if not a.startswith('_')]}")
+
+    mods = []
+    for mod in (m.get_editor_property("modifiers") or []):
+        if mod:
+            mods.append(mod.get_class().get_name())
+    out(f"  [{i}] action={action_name} ({value_type}) key='{key_name}' modifiers={mods}")
 
 with open("/tmp/imc_dump.txt", "w") as f:
     f.write("\n".join(lines))
-unreal.log(f"Wrote {len(lines)} lines.")
