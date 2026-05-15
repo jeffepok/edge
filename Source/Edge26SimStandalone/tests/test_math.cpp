@@ -2,6 +2,7 @@
 #include "Math/Mul64.h"
 #include "Math/FixedVec.h"
 #include "Math/FixedAngle.h"
+#include "Math/Trig.h"
 #include "TestHarness.h"
 
 using edge26::Fixed64;
@@ -126,6 +127,30 @@ TEST_CASE(FixedAngle_Normalization) {
     return 0;
 }
 
+TEST_CASE(Trig_SinCos_Identity) {
+    using namespace edge26;
+    int32_t pi = FixedAngle::PiRaw();
+    for (int i = -180; i < 180; ++i) {
+        int32_t raw = (int32_t)((int64_t)i * pi / 180);
+        FixedAngle a = FixedAngle::FromRaw(raw);
+        Fixed32 s = SimMath::Sin(a);
+        Fixed32 c = SimMath::Cos(a);
+        int32_t s2 = (int32_t)(((int64_t)s.Raw * s.Raw) >> 16);
+        int32_t c2 = (int32_t)(((int64_t)c.Raw * c.Raw) >> 16);
+        TEST_EXPECT_NEAR_INT(s2 + c2, Fixed32::One, 128);  // ~0.2% error budget; LUT lerp floor
+    }
+    return 0;
+}
+
+TEST_CASE(Trig_SinCos_AnchorValues) {
+    using namespace edge26;
+    TEST_EXPECT_NEAR_INT(SimMath::Sin(FixedAngle::Zero()).Raw, 0, 4);
+    TEST_EXPECT_NEAR_INT(SimMath::Cos(FixedAngle::Zero()).Raw, Fixed32::One, 4);
+    FixedAngle halfPi = FixedAngle::FromRaw(FixedAngle::PiRaw() / 2);
+    TEST_EXPECT_NEAR_INT(SimMath::Sin(halfPi).Raw, Fixed32::One, 4);
+    return 0;
+}
+
 int RunMathTests() {
     TEST_RUN(Fixed64_FromInt_RoundTrip);
     TEST_RUN(Fixed64_Add);
@@ -138,5 +163,7 @@ int RunMathTests() {
     TEST_RUN(FixedVec3_AddScale);
     TEST_RUN(FixedVec3_Dot);
     TEST_RUN(FixedAngle_Normalization);
+    TEST_RUN(Trig_SinCos_Identity);
+    TEST_RUN(Trig_SinCos_AnchorValues);
     return 0;
 }
