@@ -14,9 +14,11 @@ struct FSimWorldState {
     uint32_t        _pad0;                        // explicit pad before 8-aligned RngState
     uint64_t        RngState;                     // 8 B
     FSimBallState   Ball;                         // 80 B
-    FSimPlayerState Players[kSimPlayerCount];     // 128 B
+    FSimPlayerState Players[kSimPlayerCount];     // 176 B (2 * 88 B after T1.2 extension)
 };
-static_assert(sizeof(FSimWorldState)  == 224, "FSimWorldState must be 224 bytes");
+// FSimWorldState grows to 272 B after FSimPlayerState extended to 88 B in T1.2.
+// Final world-state static_assert is deferred — size grows substantially in M2.
+static_assert(sizeof(FSimWorldState)  == 272, "FSimWorldState must be 272 bytes");
 static_assert(alignof(FSimWorldState) == 8,   "FSimWorldState must be 8-aligned");
 
 }  // namespace edge26

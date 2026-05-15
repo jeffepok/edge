@@ -8,8 +8,8 @@ using namespace edge26;
 
 TEST_CASE(WorldState_Sizes) {
     TEST_EXPECT_EQ((int64_t)sizeof(FSimBallState),   (int64_t)80);
-    TEST_EXPECT_EQ((int64_t)sizeof(FSimPlayerState), (int64_t)64);
-    TEST_EXPECT_EQ((int64_t)sizeof(FSimWorldState),  (int64_t)224);
+    TEST_EXPECT_EQ((int64_t)sizeof(FSimPlayerState), (int64_t)88);
+    // FSimWorldState size assertion is deferred — it grows substantially in M2.
     return 0;
 }
 
