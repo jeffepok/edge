@@ -13,9 +13,9 @@ interpolated transforms, rewritten RUNBOOK. Automated acceptance criteria
 (spec §14 #1–#4, #6–#8) all pass; PIE acceptance (§14 #5) confirmed
 working end-to-end.
 
-**Phase 2 (Spatial AI) is now starting** on branch
-`feat/phase2-spatial-ai`. First milestone is M1 — roster expansion to 22
-players with roles, formations, and kickoff placement. Spec:
+We are at **Phase 2 M2 of M12** (spatial value model). M1 (roster expansion)
+is complete: 22 players spawn at 4-3-3 slots, kickoff places them via the
+sim, determinism baselines regenerated, lint + CI gates still green. Spec:
 `docs/superpowers/specs/2026-05-15-phase2-spatial-ai-design.md`. Plan:
 `docs/superpowers/plans/2026-05-15-phase2-spatial-ai-plan.md`.
 
@@ -32,7 +32,7 @@ players with roles, formations, and kickoff placement. Spec:
 - [x] M7. RUNBOOK rewrite + final acceptance pass (PIE test + CI push remain as user manual steps)
 
 ### Phase 2: Spatial Value Model + 22-player AI  ←  current
-- [ ] M1. Roster expansion: 22 players, roles, formations, kickoff placement
+- [x] M1. Roster expansion: 22 players, roles, formations, kickoff placement
 - [ ] M2. Spatial Value Model (5 fields × 1768 cells)
 - [ ] M3. Layer C off-ball intents
 - [ ] M4. Layer C on-ball decisions
@@ -67,3 +67,4 @@ players with roles, formations, and kickoff placement. Spec:
 - M7 landed: RUNBOOK fully rewritten for the new architecture (CMake/lint/PIE workflows, troubleshooting table, headless Python commandlet pattern). Automated acceptance criteria all green: determinism gate PASS, lint OK, Edge26Sim depends only on Core, standalone has no UE5 dylib, decision log D1–D9 current. PIE acceptance walk-through and CI push verification remain as user manual steps.
 - All v0 acceptance criteria green except the two manual steps. Phase 1 is shippable.
 - Post-merge PIE polish: filled BP-overlooked defaults into C++ constructors via ConstructorHelpers (SKM_Manny_Simple, ABP_Footballer, /Game/Input/* IAs, Engine sphere mesh) so re-parented BPs work without manual setup; SimHostSubsystem now seeds player/ball position from placed actor transforms (was teleporting to origin); IA_Look type fixed Boolean → Axis2D (Mouse XY can't bind to a Boolean action without ensure-fail); BP_OpponentFootballer set to AutoPossessPlayer=Disabled, ControllerIndex=1 via Python; IA_Move path mismatch fixed (loaded /Game/Input/IA_Move but IMC binds /Game/Input/Actions/IA_Move). WASD now drives the mannequin end-to-end. PIE acceptance criteria §14 #5 GREEN.
+- M1 landed: kSimPlayerCount 2→22, ERole enum, FFormationSlot + kFormation_4_3_3, FSimPlayerState 64→88 B, SimWorld ctor places 22, ResetAllPlayersTo4_3_3 in adapter, 22-player snapshot baselines regenerated, all unit tests pass.
