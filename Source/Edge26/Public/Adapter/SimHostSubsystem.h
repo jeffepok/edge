@@ -36,6 +36,9 @@ public:
 	// Goal-trigger reads (spec §11).
 	FVector GetBallPositionWorld() const;
 
+	// Read-only snapshot of the latest sim state (used by debug renderer).
+	const edge26::FSimWorldState& GetState() const { return CurrState; }
+
 	// Kickoff reset helpers (GameMode calls these).
 	void ResetBall(FVector WorldPos);
 	void ResetPlayer(int32 ControllerIndex, FVector WorldPos, FRotator WorldRot);
