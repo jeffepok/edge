@@ -178,10 +178,51 @@ void UpdateMidfieldUnit(FUnitState& u, FSimWorldState& s, int teamId) {
 }
 
 // ---------------------------------------------------------------------------
-// Task T5.4 — UpdateAttackUnit  (stub — filled in T5.4)
+// Task T5.4 — UpdateAttackUnit
 // ---------------------------------------------------------------------------
 
-void UpdateAttackUnit(FUnitState&, FSimWorldState&, int)  {}
+void UpdateAttackUnit(FUnitState& u, FSimWorldState& s, int teamId) {
+    // LineY = highest player X (further forward = larger signed-forward coordinate).
+    Fixed64 bestForward = Fixed64::FromInt(-99999999);
+    for (int i = 0; i < kSimPlayerCount; ++i) {
+        const auto& p = s.Players[i];
+        if (p.TeamId != teamId) continue;
+        if (UnitOf((ERole)p.RoleId) != 2) continue;
+        Fixed64 forward = p.Position.X * SignForTeam(teamId);
+        if (forward.Raw > bestForward.Raw) bestForward = forward;
+    }
+    // Convert signed-forward back to absolute X via safe operator*.
+    u.LineY = bestForward * SignForTeam(teamId);
+
+    // Overlap nomination: if carrier is on a flank AND a same-side FB exists,
+    // nominate that FB for the overlap.
+    u.OverlapTriggerIdx = 0xFF;
+    if (s.Match.PossessionTeam == (uint8_t)teamId
+        && s.Match.PossessionPlayer != 0xFF)
+    {
+        const auto& carrier  = s.Players[s.Match.PossessionPlayer];
+        // "Flank" = |carrier.Y| > 2/3 pitch half-width.
+        Fixed64 flankCut = SimConst::PitchHalfWid * Fixed64::FromInt(2) / Fixed64::FromInt(3);
+        if (Abs(carrier.Position.Y).Raw > flankCut.Raw) {
+            uint8_t wantedFBRole = (carrier.Position.Y.Raw > 0)
+                ? (uint8_t)ERole::FB_R
+                : (uint8_t)ERole::FB_L;
+            for (int i = 0; i < kSimPlayerCount; ++i) {
+                const auto& p = s.Players[i];
+                if (p.TeamId != teamId) continue;
+                if (p.RoleId != wantedFBRole) continue;
+                u.OverlapTriggerIdx = (uint8_t)i;
+                break;
+            }
+        }
+    }
+
+    // Press nomination: attack unit only presses when opp has ball in opp's
+    // own third (high press). For v0 keep this off — Defense + Midfield handle it.
+    u.PressTrigger   = 0;
+    u.PressTargetIdx = 0xFF;
+    u.Compactness    = Fixed32::FromRaw(0);
+}
 
 // ---------------------------------------------------------------------------
 // UpdateAllUnits
