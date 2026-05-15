@@ -350,6 +350,30 @@ TEST_CASE(SpatialModel_CellIndexClampsOutOfBounds) {
     return 0;
 }
 
+// ----- T2.4: UpdateLaneOccupancyField -----
+
+TEST_CASE(SpatialModel_LaneOccupancyEmptyPitchAllClear) {
+    using namespace edge26;
+    SimWorld w{1};
+    auto& state = w.MutableState();
+    // Move every player far off pitch so no one blocks lanes.
+    for (int i = 0; i < kSimPlayerCount; ++i) {
+        state.Players[i].Position = FixedVec3{
+            Fixed64::FromInt(99999), Fixed64::FromInt(99999), Fixed64::FromInt(0)
+        };
+    }
+    state.Ball.Position = FixedVec3::Zero();
+    // state.Match.PossessionPlayer deferred — FMatchState lands in T2.6.
+    // v0: ball position is used unconditionally as lane origin.
+    UpdateLaneOccupancyField(state);
+    // Every cell should be fully clear (lane = 1).
+    for (int c = 0; c < kPitchCells; ++c) {
+        Fixed32 v = state.Spatial.Cells[0][(int)ESpatialField::LaneOccupancy][c];
+        TEST_EXPECT_EQ(v.Raw, Fixed32::One);
+    }
+    return 0;
+}
+
 // ----- T2.3: UpdateDefCoverageField -----
 
 TEST_CASE(SpatialModel_DefCoverageHighWhereTeammatesScarce) {
@@ -394,5 +418,6 @@ int RunSnapshotTests() {
     TEST_RUN(SpatialModel_CellIndexRoundtrip);
     TEST_RUN(SpatialModel_CellIndexClampsOutOfBounds);
     TEST_RUN(SpatialModel_DefCoverageHighWhereTeammatesScarce);
+    TEST_RUN(SpatialModel_LaneOccupancyEmptyPitchAllClear);
     return 0;
 }

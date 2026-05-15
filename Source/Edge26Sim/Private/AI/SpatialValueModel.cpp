@@ -60,6 +60,12 @@ void UpdateSpaceField(FSimWorldState& s, int teamId) {
     }
 }
 
+// Block radius for lane occupancy: 80 cm.
+// kLaneBlockRadiusSq in Q32.32: (80^2) << 32 = 6400 << 32
+static constexpr Fixed64 kLaneBlockRadiusSq = Fixed64::FromRaw((int64_t)6400 * ((int64_t)1 << 32));
+// Axis cap for lane block check: any axis delta > 80 cm can't be within 80 cm radius.
+constexpr int64_t kLaneBlockCm = 80;
+
 void UpdateDefCoverageField(FSimWorldState& s, int teamId) {
     auto& field = s.Spatial.Cells[teamId][(int)ESpatialField::DefCoverage];
     for (int c = 0; c < kPitchCells; ++c) {
@@ -83,6 +89,52 @@ void UpdateDefCoverageField(FSimWorldState& s, int teamId) {
         }
         // High value = poorly covered (far from any teammate).
         field[c] = DistanceToOpenness(minDistSq);
+    }
+}
+
+void UpdateLaneOccupancyField(FSimWorldState& s) {
+    FixedVec3 origin = s.Ball.Position;
+    auto& fieldTeam0 = s.Spatial.Cells[0][(int)ESpatialField::LaneOccupancy];
+    auto& fieldTeam1 = s.Spatial.Cells[1][(int)ESpatialField::LaneOccupancy];
+
+    // Pre-compute fractions t = sample/6 as Fixed64 to avoid repeated division.
+    // t_k = k/6 for k in {1,2,3,4,5}.  In Q32.32: k * (1<<32) / 6.
+    static const Fixed64 kSampleT[5] = {
+        Fixed64::FromInt(1) / Fixed64::FromInt(6),
+        Fixed64::FromInt(2) / Fixed64::FromInt(6),
+        Fixed64::FromInt(3) / Fixed64::FromInt(6),
+        Fixed64::FromInt(4) / Fixed64::FromInt(6),
+        Fixed64::FromInt(5) / Fixed64::FromInt(6),
+    };
+
+    for (int c = 0; c < kPitchCells; ++c) {
+        FixedVec3 cellPos = CellCenter(c);
+        FixedVec3 ray = cellPos - origin;
+        bool blocked = false;
+        // Sample 5 points at t = 1/6, 2/6, ..., 5/6 along origin→cell.
+        for (int sample = 0; sample < 5 && !blocked; ++sample) {
+            FixedVec3 p = origin + ray * kSampleT[sample];
+            for (int i = 0; i < kSimPlayerCount; ++i) {
+                const auto& opp = s.Players[i];
+                // Axis-level early-out to prevent overflow before squaring.
+                int64_t dx_cm = opp.Position.X.ToInt() - p.X.ToInt();
+                int64_t dy_cm = opp.Position.Y.ToInt() - p.Y.ToInt();
+                if (dx_cm > kLaneBlockCm || dx_cm < -kLaneBlockCm ||
+                    dy_cm > kLaneBlockCm || dy_cm < -kLaneBlockCm) {
+                    continue;
+                }
+                Fixed64 dX = opp.Position.X - p.X;
+                Fixed64 dY = opp.Position.Y - p.Y;
+                Fixed64 distSq = dX * dX + dY * dY;
+                if (distSq.Raw < kLaneBlockRadiusSq.Raw) {
+                    blocked = true;
+                    break;
+                }
+            }
+        }
+        Fixed32 v = blocked ? Fixed32::FromRaw(0) : Fixed32::FromRaw(Fixed32::One);
+        fieldTeam0[c] = v;
+        fieldTeam1[c] = v;
     }
 }
 
