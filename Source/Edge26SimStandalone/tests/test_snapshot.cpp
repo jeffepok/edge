@@ -3,6 +3,7 @@
 #include "Sim/Constants.h"
 #include "AI/Formations.h"
 #include "AI/Roles.h"
+#include "AI/SpatialValueModel.h"
 #include "TestHarness.h"
 #include <cstring>
 
@@ -276,6 +277,33 @@ TEST_CASE(World_22StationaryPlayersStable) {
     return 0;
 }
 
+// ----- T2.1: SpatialValueModel struct + cell helpers -----
+
+TEST_CASE(SpatialModel_CellIndexRoundtrip) {
+    using namespace edge26;
+    // Center cell of the pitch should map to a cell around (kPitchCellsX/2, kPitchCellsY/2).
+    int center = CellIndex(FixedVec3::Zero());
+    FixedVec3 back = CellCenter(center);
+    // Should be near origin (within one cell radius)
+    TEST_EXPECT_TRUE(Abs(back.X).Raw < (Fixed64::FromInt(kCellSizeX_cm)).Raw);
+    TEST_EXPECT_TRUE(Abs(back.Y).Raw < (Fixed64::FromInt(kCellSizeY_cm)).Raw);
+    return 0;
+}
+
+TEST_CASE(SpatialModel_CellIndexClampsOutOfBounds) {
+    using namespace edge26;
+    // Way off-pitch positions clamp to corner cells; no crash.
+    int corner1 = CellIndex(FixedVec3{
+        Fixed64::FromInt(-99999), Fixed64::FromInt(-99999), Fixed64::FromInt(0)
+    });
+    int corner2 = CellIndex(FixedVec3{
+        Fixed64::FromInt( 99999), Fixed64::FromInt( 99999), Fixed64::FromInt(0)
+    });
+    TEST_EXPECT_EQ((int64_t)corner1, (int64_t)0);
+    TEST_EXPECT_EQ((int64_t)corner2, (int64_t)(kPitchCells - 1));
+    return 0;
+}
+
 int RunSnapshotTests() {
     TEST_RUN(WorldState_Sizes);
     TEST_RUN(WorldState_Aligned);
@@ -293,5 +321,7 @@ int RunSnapshotTests() {
     TEST_RUN(Formation_HomeAwaySymmetry);
     TEST_RUN(World_22PlayersAtSlots);
     TEST_RUN(World_22StationaryPlayersStable);
+    TEST_RUN(SpatialModel_CellIndexRoundtrip);
+    TEST_RUN(SpatialModel_CellIndexClampsOutOfBounds);
     return 0;
 }
