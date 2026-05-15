@@ -27,6 +27,5 @@ public class Edge26Sim : ModuleRules
 		});
 
 		bUseUnity = false;
-		CppStandard = CppStandardVersion.Cpp17;
 	}
 }

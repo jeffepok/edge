@@ -73,7 +73,8 @@ public class Edge26Sim : ModuleRules
         });
 
         bUseUnity = false;
-        CppStandard = CppStandardVersion.Cpp17;
+        // UE 5.7 requires Cpp20 or later. We let the engine default apply rather than
+        // pinning to Cpp17 (which UBT rejects).
     }
 }
 ```

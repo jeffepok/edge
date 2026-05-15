@@ -17,6 +17,14 @@
 				"NavigationSystem",
 				"UMG"
 			]
+		},
+		{
+			"Name": "Edge26Sim",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [
+				"Core"
+			]
 		}
 	],
 	"Plugins": [
