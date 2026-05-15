@@ -551,6 +551,56 @@ TEST_CASE(AI_LateGameMentalityShift) {
     return 0;
 }
 
+TEST_CASE(Sim_OffsideFlagAndResolve) {
+    using namespace edge26;
+    SimWorld w{1};
+    auto& st = w.MutableState();
+    // Home defends -X; their offside line is at +1000 (10m past midline).
+    // Park last home defender far back so offside line for away = ball.X.
+    // Simpler: hand-set OffsideLineY[1] = 0 (away's line) and put receiver at +2000.
+    st.Match.OffsideLineY[1] = Fixed64::FromInt(0);
+
+    // Push everyone off pitch except carrier (away, idx 12), receiver (away, idx 13).
+    for (int i = 0; i < kSimPlayerCount; ++i)
+        st.Players[i].Position = FixedVec3{ Fixed64::FromInt(99999), Fixed64::FromInt(99999), Fixed64::FromInt(0) };
+    st.Players[12].TeamId = 1;
+    st.Players[13].TeamId = 1;
+    st.Players[12].RoleId = (uint8_t)ERole::CM;
+    st.Players[13].RoleId = (uint8_t)ERole::ST;
+    st.Players[12].Position = FixedVec3{ Fixed64::FromInt(-500), Fixed64::FromInt(0), Fixed64::FromInt(0) };
+    st.Players[13].Position = FixedVec3{ Fixed64::FromInt(-2000), Fixed64::FromInt(0), Fixed64::FromInt(0) };
+
+    // One home defender to receive after the call.
+    st.Players[1].TeamId = 0;
+    st.Players[1].RoleId = (uint8_t)ERole::CB;
+    st.Players[1].Position = FixedVec3{ Fixed64::FromInt(-2200), Fixed64::FromInt(100), Fixed64::FromInt(0) };
+
+    st.Match.PossessionTeam   = 1;
+    st.Match.PossessionPlayer = 12;
+    // Make player 12 the "human" so UpdatePlayerAI doesn't clear PendingButtons.
+    // Wire to controller slot 0 so MaybeApplyKick doesn't skip it.
+    st.Match.HumanControlledIndex = 12;
+    st.Players[12].ControllerIndex = 0;
+    st.Players[12].IntendedPassTarget = 13;
+    st.Ball.Position = st.Players[12].Position;
+
+    // Tick once: pass fires, offside flagged.
+    FInputFrame f{};
+    f.TickNumber = 1;
+    f.Buttons[0] = InputButton::Pass;     // fire pass for player 12
+    w.Step(f);
+    TEST_EXPECT_EQ(st.Match.PendingOffsideCallTeam, (uint8_t)1);
+
+    // Tick ~35 more times — flag should resolve and home defender should have ball.
+    for (int t = 2; t < 40; ++t) {
+        f.TickNumber = (uint32_t)t;
+        w.Step(f);
+    }
+    TEST_EXPECT_EQ(st.Match.PendingOffsideCallTeam, (uint8_t)0xFF);
+    TEST_EXPECT_EQ(st.Match.PossessionTeam, (uint8_t)0);
+    return 0;
+}
+
 int RunSnapshotTests() {
     TEST_RUN(WorldState_Sizes);
     TEST_RUN(WorldState_Aligned);
@@ -581,5 +631,6 @@ int RunSnapshotTests() {
     TEST_RUN(Sim_PossessionFlipsOnPickup);
     TEST_RUN(Sim_AICarrierFiresPass);
     TEST_RUN(AI_LateGameMentalityShift);
+    TEST_RUN(Sim_OffsideFlagAndResolve);
     return 0;
 }

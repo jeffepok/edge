@@ -59,7 +59,9 @@ static void ResolveOffsideCall(FSimWorldState& s)
     // Resolution trigger 1: grace expired.
     bool expired  = (s.TickNumber >= startedTick + graceTicks);
     // Resolution trigger 2: the attacking team controls the ball (receiver picked it up).
-    bool received = (s.Match.PossessionTeam == attackingTeam);
+    // Guard: don't trigger on the same tick the flag was set (possession hasn't updated yet).
+    bool received = (s.Match.PossessionTeam == attackingTeam) &&
+                    (s.TickNumber > startedTick);
 
     if (expired || received) {
         // Award possession to the defending team.
