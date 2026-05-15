@@ -17,6 +17,7 @@ SimWorld::SimWorld(uint64_t rngSeed) {
 }
 
 extern void StepPlayer(FSimPlayerState& p, const FInputFrame& frame);
+extern void StepBall(FSimBallState& b);
 
 void SimWorld::Step(const FInputFrame& frame) {
     State.TickNumber = frame.TickNumber;
@@ -25,6 +26,7 @@ void SimWorld::Step(const FInputFrame& frame) {
     for (int i = 0; i < kSimPlayerCount; ++i) {
         StepPlayer(State.Players[i], frame);
     }
+    StepBall(State.Ball);
 }
 
 }  // namespace edge26

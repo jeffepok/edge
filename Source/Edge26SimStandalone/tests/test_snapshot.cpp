@@ -55,11 +55,36 @@ TEST_CASE(Player_RespondsToStickInput) {
     return 0;
 }
 
+TEST_CASE(Ball_FallsUnderGravity) {
+    SimWorld w{1};
+    w.MutableState().Ball.Position.Z = Fixed64::FromInt(500);
+    w.MutableState().Ball.Velocity   = FixedVec3::Zero();
+    w.MutableState().Ball.Flags      = 0;
+    FInputFrame f{};
+    for (int i = 0; i < 5; ++i) { f.TickNumber = (uint32_t)i; w.Step(f); }
+    TEST_EXPECT_TRUE(w.GetState().Ball.Velocity.Z.Raw < 0);
+    TEST_EXPECT_TRUE(w.GetState().Ball.Position.Z.Raw < Fixed64::FromInt(500).Raw);
+    return 0;
+}
+
+TEST_CASE(Ball_SettlesOnGround) {
+    SimWorld w{1};
+    w.MutableState().Ball.Position.Z = Fixed64::FromInt(100);
+    w.MutableState().Ball.Velocity   = FixedVec3::Zero();
+    FInputFrame f{};
+    for (int i = 0; i < 500; ++i) { f.TickNumber = (uint32_t)i; w.Step(f); }
+    TEST_EXPECT_TRUE(w.GetState().Ball.Position.Z.Raw <= (SimConst::BallRadius.Raw + (Fixed64::One / 10)));
+    TEST_EXPECT_TRUE((w.GetState().Ball.Flags & BallFlag::Grounded) != 0);
+    return 0;
+}
+
 int RunSnapshotTests() {
     TEST_RUN(WorldState_Sizes);
     TEST_RUN(WorldState_Aligned);
     TEST_RUN(SimWorld_FreshIsZeroExceptSeed);
     TEST_RUN(Player_StationaryNoInput);
     TEST_RUN(Player_RespondsToStickInput);
+    TEST_RUN(Ball_FallsUnderGravity);
+    TEST_RUN(Ball_SettlesOnGround);
     return 0;
 }
