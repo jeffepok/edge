@@ -82,6 +82,9 @@ void USimHostSubsystem::DriveVisuals(float Alpha)
 	}
 }
 
+// Forward declare; defined below.
+static edge26::Fixed64 ToFixed64(double cm);
+
 void USimHostSubsystem::RegisterFootballer(AFootballerVisual* Pawn, int32 ControllerIndex)
 {
 	if (!Pawn) return;
@@ -89,13 +92,31 @@ void USimHostSubsystem::RegisterFootballer(AFootballerVisual* Pawn, int32 Contro
 	Footballers.Add(Pawn);
 	if (Sim && ControllerIndex >= 0 && ControllerIndex < edge26::kSimPlayerCount)
 	{
-		Sim->MutableState().Players[ControllerIndex].ControllerIndex = (uint8)ControllerIndex;
+		auto& P = Sim->MutableState().Players[ControllerIndex];
+		P.ControllerIndex = (uint8)ControllerIndex;
+		// Seed sim position from where the actor was placed in the level — otherwise
+		// the next tick teleports the visual to (0,0,0) and it disappears below the floor.
+		const FVector Loc = Pawn->GetActorLocation();
+		P.Position = { ToFixed64(Loc.X), ToFixed64(Loc.Y), ToFixed64(Loc.Z) };
+		// Sync interp cache so the first render frame doesn't lerp from (0,0,0) → placed pos.
+		Sim->Snapshot(CurrState);
+		PrevState = CurrState;
 	}
 }
 
 void USimHostSubsystem::RegisterBall(ASoccerBallVisual* InBall)
 {
 	Ball = InBall;
+	if (Sim && InBall)
+	{
+		const FVector Loc = InBall->GetActorLocation();
+		auto& BallState = Sim->MutableState().Ball;
+		BallState.Position = { ToFixed64(Loc.X), ToFixed64(Loc.Y), ToFixed64(Loc.Z) };
+		BallState.Velocity = edge26::FixedVec3::Zero();
+		BallState.Flags = 0;
+		Sim->Snapshot(CurrState);
+		PrevState = CurrState;
+	}
 }
 
 void USimHostSubsystem::SetMoveInput(int32 ControllerIndex, FVector2D Stick)
