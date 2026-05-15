@@ -57,4 +57,43 @@ constexpr Fixed64 Clamp(Fixed64 v, Fixed64 lo, Fixed64 hi) {
     return v.Raw < lo.Raw ? lo : (v.Raw > hi.Raw ? hi : v);
 }
 
+struct Fixed32 {
+    int32_t Raw;
+
+    static constexpr int32_t Shift = 16;
+    static constexpr int32_t One   = 1 << 16;
+    static constexpr int32_t Zero  = 0;
+
+    static constexpr Fixed32 FromRaw(int32_t r) { return Fixed32{r}; }
+    static constexpr Fixed32 FromInt(int32_t i) { return Fixed32{i << Shift}; }
+
+    constexpr int32_t ToInt() const { return Raw >> Shift; }
+
+    constexpr Fixed32 operator+(Fixed32 o) const { return Fixed32{Raw + o.Raw}; }
+    constexpr Fixed32 operator-(Fixed32 o) const { return Fixed32{Raw - o.Raw}; }
+    constexpr Fixed32 operator-()           const { return Fixed32{-Raw}; }
+
+    // 32x32 -> 64 then >>16 for Q16.16 multiply. Always safe in int64.
+    constexpr Fixed32 operator*(Fixed32 o) const {
+        return Fixed32{(int32_t)(((int64_t)Raw * (int64_t)o.Raw) >> Shift)};
+    }
+    constexpr Fixed32 operator/(Fixed32 o) const {
+        return Fixed32{(int32_t)(((int64_t)Raw << Shift) / o.Raw)};
+    }
+
+    constexpr bool operator==(Fixed32 o) const { return Raw == o.Raw; }
+    constexpr bool operator!=(Fixed32 o) const { return Raw != o.Raw; }
+    constexpr bool operator<(Fixed32 o)  const { return Raw <  o.Raw; }
+    constexpr bool operator<=(Fixed32 o) const { return Raw <= o.Raw; }
+    constexpr bool operator>(Fixed32 o)  const { return Raw >  o.Raw; }
+    constexpr bool operator>=(Fixed32 o) const { return Raw >= o.Raw; }
+};
+
+constexpr Fixed32 Abs(Fixed32 a)  { return a.Raw < 0 ? Fixed32{-a.Raw} : a; }
+constexpr Fixed32 Min(Fixed32 a, Fixed32 b) { return a.Raw < b.Raw ? a : b; }
+constexpr Fixed32 Max(Fixed32 a, Fixed32 b) { return a.Raw > b.Raw ? a : b; }
+constexpr Fixed32 Clamp(Fixed32 v, Fixed32 lo, Fixed32 hi) {
+    return v.Raw < lo.Raw ? lo : (v.Raw > hi.Raw ? hi : v);
+}
+
 }  // namespace edge26

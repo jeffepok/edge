@@ -72,6 +72,17 @@ TEST_CASE(Fixed64_Helpers) {
     return 0;
 }
 
+TEST_CASE(Fixed32_Basics) {
+    using edge26::Fixed32;
+    TEST_EXPECT_EQ(Fixed32::FromInt(0).ToInt(),     (int32_t)0);
+    TEST_EXPECT_EQ(Fixed32::FromInt(100).ToInt(),   (int32_t)100);
+    TEST_EXPECT_EQ((Fixed32::FromInt(3) + Fixed32::FromInt(4)).ToInt(), (int32_t)7);
+    TEST_EXPECT_EQ((Fixed32::FromInt(3) - Fixed32::FromInt(4)).ToInt(), (int32_t)-1);
+    TEST_EXPECT_EQ((Fixed32::FromInt(6) * Fixed32::FromInt(7)).ToInt(), (int32_t)42);
+    TEST_EXPECT_EQ((Fixed32::FromInt(20) / Fixed32::FromInt(4)).ToInt(), (int32_t)5);
+    return 0;
+}
+
 int RunMathTests() {
     TEST_RUN(Fixed64_FromInt_RoundTrip);
     TEST_RUN(Fixed64_Add);
@@ -80,5 +91,6 @@ int RunMathTests() {
     TEST_RUN(Fixed64_Multiply);
     TEST_RUN(Fixed64_Divide);
     TEST_RUN(Fixed64_Helpers);
+    TEST_RUN(Fixed32_Basics);
     return 0;
 }
