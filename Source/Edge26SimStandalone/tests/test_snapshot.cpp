@@ -2,6 +2,7 @@
 #include "Sim/SimWorld.h"
 #include "Sim/Constants.h"
 #include "TestHarness.h"
+#include <cstring>
 
 using namespace edge26;
 
@@ -98,6 +99,23 @@ TEST_CASE(Kick_PassImpulse) {
     return 0;
 }
 
+TEST_CASE(Sim_TwoRunsIdentical) {
+    SimWorld a{0xABCDEFull};
+    SimWorld b{0xABCDEFull};
+    FInputFrame f{};
+    for (int tick = 0; tick < 200; ++tick) {
+        f.TickNumber  = (uint32_t)tick;
+        int phase = tick % 60;
+        f.Move[0][0] = (int8_t)(phase < 30 ? 120 : -120);
+        f.Move[0][1] = (int8_t)(phase < 15 || phase >= 45 ? 90 : -90);
+        f.Buttons[0] = (tick % 50 == 49) ? InputButton::Pass : 0;
+        a.Step(f); b.Step(f);
+    }
+    int cmp = std::memcmp(&a.GetState(), &b.GetState(), sizeof(FSimWorldState));
+    TEST_EXPECT_EQ((int64_t)cmp, (int64_t)0);
+    return 0;
+}
+
 int RunSnapshotTests() {
     TEST_RUN(WorldState_Sizes);
     TEST_RUN(WorldState_Aligned);
@@ -107,5 +125,6 @@ int RunSnapshotTests() {
     TEST_RUN(Ball_FallsUnderGravity);
     TEST_RUN(Ball_SettlesOnGround);
     TEST_RUN(Kick_PassImpulse);
+    TEST_RUN(Sim_TwoRunsIdentical);
     return 0;
 }
