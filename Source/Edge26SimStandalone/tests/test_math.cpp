@@ -1,6 +1,7 @@
 #include "Math/Fixed.h"
 #include "Math/Mul64.h"
 #include "Math/FixedVec.h"
+#include "Math/FixedAngle.h"
 #include "TestHarness.h"
 
 using edge26::Fixed64;
@@ -108,6 +109,23 @@ TEST_CASE(FixedVec3_Dot) {
     return 0;
 }
 
+TEST_CASE(FixedAngle_Normalization) {
+    using edge26::FixedAngle;
+    // 2π raw should normalize to 0 (within 1 ulp).
+    FixedAngle a = FixedAngle::FromRaw(FixedAngle::TwoPiRaw());
+    TEST_EXPECT_NEAR_INT(a.Raw.Raw, 0, 1);
+
+    // 3π should normalize to ≈ π (or -π)
+    FixedAngle b = FixedAngle::FromRaw((int32_t)(3 * FixedAngle::PiRaw()));
+    int32_t diffPi    = b.Raw.Raw - FixedAngle::PiRaw();
+    int32_t diffNegPi = b.Raw.Raw + FixedAngle::PiRaw();
+    int32_t minDiff = (diffPi < 0 ? -diffPi : diffPi);
+    int32_t altDiff = (diffNegPi < 0 ? -diffNegPi : diffNegPi);
+    if (altDiff < minDiff) minDiff = altDiff;
+    TEST_EXPECT_TRUE(minDiff <= 1);
+    return 0;
+}
+
 int RunMathTests() {
     TEST_RUN(Fixed64_FromInt_RoundTrip);
     TEST_RUN(Fixed64_Add);
@@ -119,5 +137,6 @@ int RunMathTests() {
     TEST_RUN(Fixed32_Basics);
     TEST_RUN(FixedVec3_AddScale);
     TEST_RUN(FixedVec3_Dot);
+    TEST_RUN(FixedAngle_Normalization);
     return 0;
 }
