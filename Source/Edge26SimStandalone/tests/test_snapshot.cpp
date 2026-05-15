@@ -482,6 +482,32 @@ TEST_CASE(Sim_22PlayerTickStable) {
     return 0;
 }
 
+TEST_CASE(Sim_AICarrierFiresPass) {
+    using namespace edge26;
+    SimWorld w{1};
+    auto& st = w.MutableState();
+    // Put two home players + ball at a clear spot; make player 1 the carrier.
+    st.Match.PossessionTeam = 0;
+    st.Match.PossessionPlayer = 1;
+    st.Match.HumanControlledIndex = 0xFF;   // no human
+    st.Players[1].Position = FixedVec3{ Fixed64::FromInt(0), Fixed64::FromInt(0), Fixed64::FromInt(0) };
+    st.Players[2].Position = FixedVec3{ Fixed64::FromInt(1000), Fixed64::FromInt(0), Fixed64::FromInt(0) };
+    st.Ball.Position       = st.Players[1].Position;
+    st.Ball.Velocity       = FixedVec3::Zero();
+    // Push opponents off pitch so they don't block the pass.
+    for (int i = 11; i < kSimPlayerCount; ++i)
+        st.Players[i].Position = FixedVec3{ Fixed64::FromInt(99999), Fixed64::FromInt(99999), Fixed64::FromInt(0) };
+
+    FInputFrame f{};
+    for (int t = 0; t < 5; ++t) {
+        f.TickNumber = (uint32_t)t;
+        w.Step(f);
+        if (st.Ball.Velocity.X.Raw != 0) break;
+    }
+    TEST_EXPECT_TRUE(st.Ball.Velocity.X.Raw != 0);   // pass fired
+    return 0;
+}
+
 int RunSnapshotTests() {
     TEST_RUN(WorldState_Sizes);
     TEST_RUN(WorldState_Aligned);
@@ -509,5 +535,6 @@ int RunSnapshotTests() {
     TEST_RUN(SpatialModel_PassReceptionForwardOfBall);
     TEST_RUN(SpatialModel_StepUpdatesFields);
     TEST_RUN(Sim_22PlayerTickStable);
+    TEST_RUN(Sim_AICarrierFiresPass);
     return 0;
 }
