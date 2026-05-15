@@ -5487,7 +5487,7 @@ Expected: no banned tokens.
 grep -n "static_assert(sizeof(FSimWorldState)" Source/Edge26Sim/Public/Sim/WorldState.h
 ```
 
-Expected: `static_assert(sizeof(FSimWorldState) == 72944)`.
+Expected: `static_assert(sizeof(FSimWorldState) == 72936)`. (The original spec §4 estimated 72,944 B; the actual size after final layout is 72,936 B — minor off-by-8 in the spec's arithmetic, no padding between FMatchState (alignof 8) and FSpatialValueModel (alignof 4). The static_assert holds at the real value.)
 
 - [ ] **Step 4: 5-minute PIE soak — second pass (criteria #1, #5, #6, #7, #8, #9, #10)**
 
