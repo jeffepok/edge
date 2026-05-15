@@ -2,7 +2,8 @@
 
 #include "Game/SoccerHUD.h"
 
-#include "Ball/SoccerBall.h"
+#include "Adapter/SoccerBallVisual.h"
+#include "Adapter/SimHostSubsystem.h"
 #include "CanvasItem.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
@@ -30,12 +31,12 @@ void ASoccerHUD::DrawHUD()
 	DrawClock(GM);
 	DrawPhaseBanner(GM);
 
-	// Ball debug HUD: speed + velocity vector + position. Toggle off by editing
-	// out this block once the prototype feels right.
-	for (TActorIterator<ASoccerBall> It(GetWorld()); It; ++It)
+	// Ball debug HUD: position from the sim. Velocity isn't exposed via the
+	// adapter yet — a follow-up can add a SimHost::GetBallVelocity() accessor.
+	for (TActorIterator<ASoccerBallVisual> It(GetWorld()); It; ++It)
 	{
-		ASoccerBall* Ball = *It;
-		const FVector Vel = Ball->GetVelocity();
+		ASoccerBallVisual* Ball = *It;
+		const FVector Vel = FVector::ZeroVector;  // placeholder; sim velocity readout TBD
 		const FVector Loc = Ball->GetActorLocation();
 		const FString Line1 = FString::Printf(TEXT("BALL  speed=%.0f  v=(%+5.0f, %+5.0f, %+5.0f)"),
 			Vel.Size(), Vel.X, Vel.Y, Vel.Z);

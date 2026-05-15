@@ -1,0 +1,57 @@
+# Edge 26 — Progress
+
+## Current status
+
+**Phase 1: Sim Core v0 is essentially COMPLETE.** All seven milestones
+(M1–M7) shipped: fixed-point math library (Q32.32 / Q16.16 with trig,
+sqrt, atan2, rng, xxhash), POD sim state structs with explicit padding,
+SimWorld tick (kinematic player + simple ball physics + kick impulses),
+snapshot/restore/hash with rollback round-trip, headless replay binary
+with 3 input streams and per-tick hash baselines, local + GitHub Actions
+determinism gate, UE5 visual-shell adapter with SimHostSubsystem driving
+interpolated transforms, rewritten RUNBOOK.
+
+The 4 automated v0 acceptance criteria (spec §14 #1–#4, #6–#8) all pass.
+**Two remaining user manual steps:** (1) the PIE acceptance walk-through
+(§14 #5 — WASD moves, kicks impulse the ball, goal trigger fires GOAL),
+and (2) pushing the branch to verify the GitHub Actions matrix runs
+green on Linux/macOS/Windows (§14 #1 cross-platform).
+
+The repo now has a deterministic 50Hz simulation core ready for Phase 2
+(spatial AI), Phase 3 (motion matching, render-side only per §3), or
+Phase 4 (rollback netcode).
+
+## Roadmap
+
+### Phase 1: Deterministic Sim Core v0  ←  current
+- [x] M0. Module scaffolding (Build.cs, uproject, CMake, PROGRESS.md, lint script)
+- [x] M1. Fixed-point math library (`Fixed64`, `Fixed32`, `FixedVec3`, trig, sqrt, RNG, hash)
+- [x] M2. SimWorld tick loop + InputFrame + SimBall/SimPlayer state structs
+- [x] M3. Snapshot/Restore + xxhash + RNG rollback-test
+- [x] M4. Standalone headless binary + 3 input streams + replay generator
+- [x] M5. `check_determinism.sh` + GitHub Actions workflow + baseline files
+- [x] M6. UE5 adapter (SimHost subsystem, AFootballerVisual, ASoccerBallVisual, BP re-parent)
+- [x] M7. RUNBOOK rewrite + final acceptance pass (PIE test + CI push remain as user manual steps)
+
+### Phase 2: Spatial Value Model + 22-player AI  (placeholder)
+### Phase 3: Motion-matching animation + procedural ball-contact IK  (placeholder; render-side only per spec §3)
+### Phase 4: Rollback netcode  (placeholder)
+### Phase 5: Economy & compliance backend  (separate repo)
+
+## Activity log
+
+### 2026-05-15 — Session 1
+- Read project_breakdown.md; aligned on first slice (deterministic sim core).
+- Brainstormed v0 design; spec committed to `docs/superpowers/specs/2026-05-15-sim-core-v0-design.md`.
+- Implementation plan committed to `docs/superpowers/plans/2026-05-15-sim-core-v0-plan.md`.
+- Decisions D1–D9 locked (see spec §2).
+- Next: M0 module scaffolding, then M1 fixed-point math library.
+- M0 landed: Edge26Sim module + standalone CMake project compile; lint_sim.sh passes on empty tree; build/sim/edge26_sim_replay runs (no UE5 dylib linked); editor build green with Cpp default (UE 5.7 rejects pinned Cpp17). Installed cmake 4.3.2 via Homebrew.
+- M1 landed: Fixed64/Fixed32/FixedVec/FixedAngle, Sin/Cos LUT (1024 entries, lerp tolerance 128 ulps), 8-iter Newton Sqrt, 20-iter CORDIC Atan2, xorshift64 Rng, xxhash64. 18 unit tests pass in standalone; lint clean.
+- M2 landed: POD state structs (12+80+64+224 B) with explicit padding, SimWorld with zero-init ctor, StepPlayer kinematic, StepBall (physics-grounded settle criterion — avoided limit cycle), MaybeApplyKick. Byte-identical determinism across two-run check passes. Fixed two plan oversights inline: FInputFrame is 12 bytes not 16 (uint32 alignment), ball settle needed post-bounce-vs-gravity check not just a velocity threshold.
+- M3 landed: Snapshot/Restore/HashState. Rollback_FullRoundTrip green (advance 50, snap, burn 40 divergent ticks, restore, advance 50 correct → hash matches single-run baseline). Per-tick hash stability test confirms no hidden state. xxhash64 over 224 bytes = ~30ns/tick.
+- M4 landed: edge26_sim_replay CLI + replay_generator + 3 binary input streams (basic 500t / ball_only 1000t / rollback_torture 2000t) + matching expected.hashes baselines (3500 lines committed). Rollback-test mode walks the torture stream successfully.
+- M5 landed: check_determinism.sh (lint + build + self-test + replay-vs-baseline + rollback round-trip, ~5s), update_determinism_baseline.sh (idempotent), GitHub Actions matrix for linux/macos/windows. CI runs the gate on push to main and on every PR.
+- M6 landed: full UE5 adapter. New classes — AFootballerVisual (APawn, no CMC, transform driven by sim), ASoccerBallVisual (AActor, no physics), USimHostSubsystem (50Hz fixed accumulator + render-frame interp + ResetBall/ResetPlayer), USimInputCollector (Enhanced Input → InputFrame), ASimHostBootstrap. SoccerGameMode + SoccerHUD + GoalTrigger rewired to new classes. 10 legacy source files deleted (FootballerCharacter, FootballerAnimInstance, SoccerBall, OpponentFootballerCharacter, OpponentAIController). Three plan/UE5 quirks caught & fixed inline: UE5 module needed Private/UE5/Edge26SimModule.cpp with IMPLEMENT_MODULE; macOS linker stripped Edge26Sim symbols without EDGE26SIM_API annotation (added fallback header); -Werror,-Wshadow caught a Ball local shadowing the member field. BPs re-parented via headless Python commandlet (-nullrhi). PIE acceptance is the remaining user step.
+- M7 landed: RUNBOOK fully rewritten for the new architecture (CMake/lint/PIE workflows, troubleshooting table, headless Python commandlet pattern). Automated acceptance criteria all green: determinism gate PASS, lint OK, Edge26Sim depends only on Core, standalone has no UE5 dylib, decision log D1–D9 current. PIE acceptance walk-through and CI push verification remain as user manual steps.
+- All v0 acceptance criteria green except the two manual steps. Phase 1 is shippable.

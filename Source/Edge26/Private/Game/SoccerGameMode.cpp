@@ -2,18 +2,19 @@
 
 #include "Game/SoccerGameMode.h"
 
-#include "Ball/SoccerBall.h"
+#include "Adapter/FootballerVisual.h"
+#include "Adapter/SimHostSubsystem.h"
+#include "Adapter/SoccerBallVisual.h"
 #include "EngineUtils.h"
 #include "Game/SoccerHUD.h"
 #include "GameFramework/PlayerStart.h"
-#include "Player/FootballerCharacter.h"
 #include "TimerManager.h"
 #include "Edge26.h"
 
 ASoccerGameMode::ASoccerGameMode()
 {
 	PrimaryActorTick.bCanEverTick = true;
-	DefaultPawnClass = AFootballerCharacter::StaticClass();
+	DefaultPawnClass = AFootballerVisual::StaticClass();
 	HUDClass = ASoccerHUD::StaticClass();
 }
 
@@ -72,16 +73,15 @@ void ASoccerGameMode::RegisterGoal(int32 ScoringTeam)
 
 void ASoccerGameMode::ResetForKickoff()
 {
-	if (ASoccerBall* Ball = FindOrCacheBall())
+	USimHostSubsystem* Host = GetWorld() ? GetWorld()->GetSubsystem<USimHostSubsystem>() : nullptr;
+	if (!Host)
 	{
-		Ball->ResetTo(BallSpawnLocation);
-	}
-	else
-	{
-		UE_LOG(LogEdge26, Warning, TEXT("ResetForKickoff: no ball in level."));
+		UE_LOG(LogEdge26, Warning, TEXT("ResetForKickoff: SimHostSubsystem missing."));
+		return;
 	}
 
-	// Move every footballer back to its nearest PlayerStart by tag (or by index).
+	Host->ResetBall(BallSpawnLocation);
+
 	TArray<APlayerStart*> Starts;
 	for (TActorIterator<APlayerStart> It(GetWorld()); It; ++It)
 	{
@@ -89,12 +89,12 @@ void ASoccerGameMode::ResetForKickoff()
 	}
 
 	int32 Idx = 0;
-	for (TActorIterator<AFootballerCharacter> It(GetWorld()); It; ++It)
+	for (TActorIterator<AFootballerVisual> It(GetWorld()); It; ++It)
 	{
-		AFootballerCharacter* F = *It;
+		AFootballerVisual* F = *It;
 		if (Starts.IsValidIndex(Idx))
 		{
-			F->TeleportTo(Starts[Idx]->GetActorLocation(), Starts[Idx]->GetActorRotation(), false, true);
+			Host->ResetPlayer(F->ControllerIndex, Starts[Idx]->GetActorLocation(), Starts[Idx]->GetActorRotation());
 		}
 		++Idx;
 	}
@@ -119,13 +119,13 @@ void ASoccerGameMode::SetPhase(EMatchPhase NewPhase)
 	UE_LOG(LogEdge26, Verbose, TEXT("Match phase → %d"), (int32)NewPhase);
 }
 
-ASoccerBall* ASoccerGameMode::FindOrCacheBall()
+ASoccerBallVisual* ASoccerGameMode::FindOrCacheBall()
 {
 	if (CachedBall.IsValid())
 	{
 		return CachedBall.Get();
 	}
-	for (TActorIterator<ASoccerBall> It(GetWorld()); It; ++It)
+	for (TActorIterator<ASoccerBallVisual> It(GetWorld()); It; ++It)
 	{
 		CachedBall = *It;
 		return *It;

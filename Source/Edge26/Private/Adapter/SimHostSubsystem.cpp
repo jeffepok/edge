@@ -1,0 +1,154 @@
+// Copyright Edge26. All Rights Reserved.
+#include "Adapter/SimHostSubsystem.h"
+#include "Adapter/FootballerVisual.h"
+#include "Adapter/SoccerBallVisual.h"
+#include <cstring>
+
+using namespace edge26;
+
+void USimHostSubsystem::Initialize(FSubsystemCollectionBase& Collection)
+{
+	Super::Initialize(Collection);
+	Sim = new SimWorld(0xED9E26ull);
+	Sim->Snapshot(PrevState);
+	Sim->Snapshot(CurrState);
+	std::memset(&CurrentInput, 0, sizeof(CurrentInput));
+}
+
+void USimHostSubsystem::Deinitialize()
+{
+	delete Sim; Sim = nullptr;
+	Super::Deinitialize();
+}
+
+void USimHostSubsystem::Tick(float DeltaTime)
+{
+	if (!Sim) return;
+	Accumulator += DeltaTime;
+	int safetyCap = 5;
+	while (Accumulator >= TickDuration && safetyCap-- > 0)
+	{
+		CurrentInput.TickNumber = CurrentTick;
+		PrevState = CurrState;
+		Sim->Step(CurrentInput);
+		Sim->Snapshot(CurrState);
+		CurrentTick++;
+		Accumulator -= TickDuration;
+	}
+	if (safetyCap < 0) Accumulator = 0.0f;  // bail on tick spiral
+
+	float Alpha = FMath::Clamp(Accumulator / TickDuration, 0.0f, 1.0f);
+	DriveVisuals(Alpha);
+}
+
+static FVector ToUE(edge26::FixedVec3 v)
+{
+	// sim cm → UE5 cm (same unit; lossy float convert for render only).
+	return FVector{
+		(double)v.X.Raw / (double)edge26::Fixed64::One,
+		(double)v.Y.Raw / (double)edge26::Fixed64::One,
+		(double)v.Z.Raw / (double)edge26::Fixed64::One,
+	};
+}
+
+static FRotator ToUEYaw(edge26::FixedAngle a)
+{
+	double rad = (double)a.Raw.Raw / (double)edge26::Fixed32::One;
+	return FRotator(0.0, FMath::RadiansToDegrees(rad), 0.0);
+}
+
+void USimHostSubsystem::DriveVisuals(float Alpha)
+{
+	// Ball.
+	if (Ball.IsValid())
+	{
+		FVector p0 = ToUE(PrevState.Ball.Position);
+		FVector p1 = ToUE(CurrState.Ball.Position);
+		FVector p  = FMath::Lerp(p0, p1, Alpha);
+		Ball->DriveFromSim(FTransform(FRotator::ZeroRotator, p));
+	}
+	// Footballers.
+	for (auto& Weak : Footballers)
+	{
+		AFootballerVisual* F = Weak.Get();
+		if (!F) continue;
+		const int32 idx = F->ControllerIndex;
+		if (idx < 0 || idx >= edge26::kSimPlayerCount) continue;
+		FVector  p0 = ToUE(PrevState.Players[idx].Position);
+		FVector  p1 = ToUE(CurrState.Players[idx].Position);
+		FVector  p  = FMath::Lerp(p0, p1, Alpha);
+		FRotator r  = ToUEYaw(CurrState.Players[idx].Heading);
+		F->DriveFromSim(FTransform(r, p));
+	}
+}
+
+void USimHostSubsystem::RegisterFootballer(AFootballerVisual* Pawn, int32 ControllerIndex)
+{
+	if (!Pawn) return;
+	Pawn->ControllerIndex = ControllerIndex;
+	Footballers.Add(Pawn);
+	if (Sim && ControllerIndex >= 0 && ControllerIndex < edge26::kSimPlayerCount)
+	{
+		Sim->MutableState().Players[ControllerIndex].ControllerIndex = (uint8)ControllerIndex;
+	}
+}
+
+void USimHostSubsystem::RegisterBall(ASoccerBallVisual* InBall)
+{
+	Ball = InBall;
+}
+
+void USimHostSubsystem::SetMoveInput(int32 ControllerIndex, FVector2D Stick)
+{
+	if (ControllerIndex < 0 || ControllerIndex >= 2) return;
+	CurrentInput.Move[ControllerIndex][0] = (int8)FMath::Clamp(Stick.X * 127.0f, -127.0f, 127.0f);
+	CurrentInput.Move[ControllerIndex][1] = (int8)FMath::Clamp(Stick.Y * 127.0f, -127.0f, 127.0f);
+}
+
+void USimHostSubsystem::SetButton(int32 ControllerIndex, uint8 ButtonMask, bool bDown)
+{
+	if (ControllerIndex < 0 || ControllerIndex >= 2) return;
+	if (bDown) CurrentInput.Buttons[ControllerIndex] |=  ButtonMask;
+	else       CurrentInput.Buttons[ControllerIndex] &= ~ButtonMask;
+}
+
+FVector USimHostSubsystem::GetBallPositionWorld() const
+{
+	if (!Sim) return FVector::ZeroVector;
+	return ToUE(Sim->GetState().Ball.Position);
+}
+
+// Convert UE5 cm (double) to sim Q32.32 Fixed64. Lossy but only used for resets.
+static edge26::Fixed64 ToFixed64(double cm)
+{
+	const double raw = cm * (double)edge26::Fixed64::One;
+	return edge26::Fixed64::FromRaw((int64_t)raw);
+}
+
+void USimHostSubsystem::ResetBall(FVector WorldPos)
+{
+	if (!Sim) return;
+	auto& BallState = Sim->MutableState().Ball;
+	BallState.Position = { ToFixed64(WorldPos.X), ToFixed64(WorldPos.Y), ToFixed64(WorldPos.Z) };
+	BallState.Velocity = edge26::FixedVec3::Zero();
+	BallState.AngularVelocity = edge26::FixedVec3::Zero();
+	BallState.Flags = 0;
+	// Sync interp cache so visuals don't lerp from the pre-reset position.
+	Sim->Snapshot(CurrState);
+	PrevState = CurrState;
+}
+
+void USimHostSubsystem::ResetPlayer(int32 ControllerIndex, FVector WorldPos, FRotator WorldRot)
+{
+	if (!Sim) return;
+	if (ControllerIndex < 0 || ControllerIndex >= edge26::kSimPlayerCount) return;
+	auto& P = Sim->MutableState().Players[ControllerIndex];
+	P.Position = { ToFixed64(WorldPos.X), ToFixed64(WorldPos.Y), ToFixed64(WorldPos.Z) };
+	P.Velocity = edge26::FixedVec3::Zero();
+	const double yawRad = FMath::DegreesToRadians(WorldRot.Yaw);
+	const int32_t yawRaw = (int32_t)(yawRad * (double)edge26::Fixed32::One);
+	P.Heading      = edge26::FixedAngle::FromRaw(yawRaw);
+	P.FacingTarget = P.Heading;
+	Sim->Snapshot(CurrState);
+	PrevState = CurrState;
+}

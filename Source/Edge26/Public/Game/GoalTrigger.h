@@ -8,7 +8,7 @@
 
 class UBoxComponent;
 class UStaticMeshComponent;
-class ASoccerBall;
+class ASoccerBallVisual;
 
 /**
  * Detects when the ball fully crosses the goal line.

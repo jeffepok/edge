@@ -34,7 +34,8 @@ public class Edge26 : ModuleRules
 			"Chaos",
 			"UMG",
 			"Slate",
-			"SlateCore"
+			"SlateCore",
+			"Edge26Sim"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[]
