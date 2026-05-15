@@ -4,6 +4,8 @@
 #if !UE_BUILD_SHIPPING
 #include "Adapter/SimHostSubsystem.h"
 #include "AI/SpatialValueModel.h"
+#include "AI/Intents.h"
+#include "AI/Roles.h"
 #include "Sim/WorldState.h"
 #include "DrawDebugHelpers.h"
 
@@ -65,6 +67,61 @@ void AAIDebugRenderer::Tick(float DeltaSeconds)
             DrawDebugBox(GetWorld(), center,
                          FVector(cellW * 0.45f, cellH * 0.45f, 1.0f),
                          col, false, -1.f, 0, 1.f);
+        }
+    }
+
+    // --- Intent Arrows ---
+    if (bShowIntentArrows)
+    {
+        static const FColor IntentColors[(int)edge26::EIntent::Count] = {
+            FColor::Yellow,     // HoldPosition
+            FColor::Green,      // MakeRunForward
+            FColor::Cyan,       // DropToReceive
+            FColor::Blue,       // ProvideWidth
+            FColor::Red,        // Press
+            FColor::Orange,     // TrackRunner
+            FColor::Purple,     // HoldDefensiveLine
+            FColor(255,200,0),  // Pass
+            FColor(255,80,80),  // Shoot
+            FColor(180,100,255),// Dribble
+            FColor::White,      // Hold
+            FColor(255,140,0),  // Clear
+        };
+        static const TCHAR* IntentNames[(int)edge26::EIntent::Count] = {
+            TEXT("Hold"), TEXT("RunFwd"), TEXT("Drop"), TEXT("Width"),
+            TEXT("Press"), TEXT("Track"), TEXT("Line"),
+            TEXT("Pass"), TEXT("Shoot"), TEXT("Drib"), TEXT("Hold"), TEXT("Clear"),
+        };
+        static const TCHAR* RoleNames[(int)edge26::ERole::Count] = {
+            TEXT("GK"), TEXT("CB"), TEXT("FBL"), TEXT("FBR"),
+            TEXT("CDM"), TEXT("CM"), TEXT("CAM"),
+            TEXT("WL"), TEXT("WR"), TEXT("ST")
+        };
+
+        for (int i = 0; i < edge26::kSimPlayerCount; ++i)
+        {
+            const auto& p = s.Players[i];
+            FVector from{
+                Edge26FixedToFloat(p.Position.X),
+                Edge26FixedToFloat(p.Position.Y),
+                120.f
+            };
+            FVector to{
+                Edge26FixedToFloat(p.AITargetPosition.X),
+                Edge26FixedToFloat(p.AITargetPosition.Y),
+                120.f
+            };
+            const uint8 ix = p.CurrentIntent;
+            FColor col = (ix < (uint8)edge26::EIntent::Count) ? IntentColors[ix] : FColor::Black;
+            DrawDebugDirectionalArrow(GetWorld(), from, to, 60.f, col, false, -1.f, 0, 2.f);
+
+            FString label = FString::Printf(TEXT("%d %s %s"),
+                i,
+                (p.RoleId < (uint8)edge26::ERole::Count) ? RoleNames[p.RoleId] : TEXT("?"),
+                (ix < (uint8)edge26::EIntent::Count)     ? IntentNames[ix]     : TEXT("?"));
+            DrawDebugString(GetWorld(),
+                from + FVector(0, 0, 60),
+                label, nullptr, col, 0.0f, true);
         }
     }
 #endif
