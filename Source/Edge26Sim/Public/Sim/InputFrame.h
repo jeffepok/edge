@@ -14,12 +14,14 @@ namespace InputButton {
     constexpr uint8_t Chip   = 1 << 3;
 }
 
+// Natural layout: 4 (Tick) + 4 (Move[2][2]) + 2 (Buttons) + 2 (_pad) = 12 bytes.
+// Max alignment = uint32 = 4, so no trailing pad. All bytes named; deterministic on every compiler.
 struct FInputFrame {
     uint32_t TickNumber;
     int8_t   Move[2][2];   // [player][axis], range [-127, 127]; axis 0=X, 1=Y
     uint8_t  Buttons[2];   // per-player bitfield (InputButton flags)
-    uint16_t _pad;         // explicit pad to 16 bytes total
+    uint16_t _pad;         // explicit padding (deterministic)
 };
-static_assert(sizeof(FInputFrame) == 16, "FInputFrame must be 16 bytes");
+static_assert(sizeof(FInputFrame) == 12, "FInputFrame must be 12 bytes");
 
 }  // namespace edge26
