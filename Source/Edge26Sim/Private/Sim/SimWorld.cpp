@@ -46,6 +46,9 @@ extern void MaybeApplyKick(FSimBallState& b, const FSimPlayerState& p, const FIn
 void SimWorld::Step(const FInputFrame& frame) {
     State.TickNumber = frame.TickNumber;
 
+    // Update all 5 spatial value fields before any player/ball logic (spec §5).
+    UpdateSpatialFields(State);
+
     // Player updates in ascending ControllerIndex order (deterministic).
     for (int i = 0; i < kSimPlayerCount; ++i) {
         StepPlayer(State.Players[i], frame);

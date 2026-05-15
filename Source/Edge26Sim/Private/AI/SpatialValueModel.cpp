@@ -216,4 +216,15 @@ void UpdatePassReceptionField(FSimWorldState& s, int teamId) {
     }
 }
 
+// T2.7 — Orchestrator: calls all 5 field updates in the required order per team.
+// Order: Space → DefCoverage → LaneOccupancy → Threat → PassReception
+// (PassReception reads Space/Lane/Threat, so those run first.)
+void UpdateSpatialFields(FSimWorldState& s) {
+    for (int t = 0; t < 2; ++t) UpdateSpaceField(s, t);
+    for (int t = 0; t < 2; ++t) UpdateDefCoverageField(s, t);
+    UpdateLaneOccupancyField(s);
+    for (int t = 0; t < 2; ++t) UpdateThreatField(s, t);
+    for (int t = 0; t < 2; ++t) UpdatePassReceptionField(s, t);
+}
+
 }  // namespace edge26

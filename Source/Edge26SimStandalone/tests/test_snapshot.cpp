@@ -424,6 +424,23 @@ TEST_CASE(SpatialModel_PassReceptionForwardOfBall) {
     return 0;
 }
 
+// ----- T2.7: UpdateSpatialFields (orchestrator via SimWorld::Step) -----
+
+TEST_CASE(SpatialModel_StepUpdatesFields) {
+    using namespace edge26;
+    SimWorld w{1};
+    FInputFrame f{};
+    f.TickNumber = 1;
+    w.Step(f);   // should call UpdateSpatialFields
+    // After one tick, the threat field should be non-trivial (hot in opp box).
+    int boxCell = CellIndex(FixedVec3{
+        Fixed64::FromInt(5000), Fixed64::FromInt(0), Fixed64::FromInt(0)
+    });
+    Fixed32 v = w.GetState().Spatial.Cells[0][(int)ESpatialField::Threat][boxCell];
+    TEST_EXPECT_TRUE(v.Raw > (Fixed32::One * 4 / 5));
+    return 0;
+}
+
 // ----- T2.3: UpdateDefCoverageField -----
 
 TEST_CASE(SpatialModel_DefCoverageHighWhereTeammatesScarce) {
@@ -471,5 +488,6 @@ int RunSnapshotTests() {
     TEST_RUN(SpatialModel_LaneOccupancyEmptyPitchAllClear);
     TEST_RUN(SpatialModel_ThreatHighInOppBox);
     TEST_RUN(SpatialModel_PassReceptionForwardOfBall);
+    TEST_RUN(SpatialModel_StepUpdatesFields);
     return 0;
 }
