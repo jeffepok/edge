@@ -39,7 +39,7 @@ struct FMatchState {
     uint8_t   PendingOffsideCallTeam;
     uint8_t   _pad0[3];
     uint32_t  PendingOffsideCallTick;
-    uint32_t  _pad1;
+    uint32_t  LastManualSwitchTick;   // tick of last manual-switch input (cooldown)
     Fixed64   OffsideLineY[2];
     FTeamPlan Plans[2];
     FUnitState Units[2][3];

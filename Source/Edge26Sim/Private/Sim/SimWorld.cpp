@@ -23,6 +23,7 @@ SimWorld::SimWorld(uint64_t rngSeed) {
     State.Match.PossessionPlayer        = 0xFF;
     State.Match.PendingOffsideCallTeam  = 0xFF;
     State.Match.HumanControlledIndex    = 0;    // will be reset by host
+    State.Match.LastManualSwitchTick    = 0;    // M9: cooldown starts inactive
 
     // Initialize each player's TeamId / RoleId / slot world position based on
     // the 4-3-3 formation. Players 0..10 = home; players 11..21 = away.
