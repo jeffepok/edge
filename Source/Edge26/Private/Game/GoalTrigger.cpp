@@ -2,7 +2,7 @@
 
 #include "Game/GoalTrigger.h"
 
-#include "Ball/SoccerBall.h"
+#include "Adapter/SoccerBallVisual.h"
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Game/SoccerGameMode.h"
@@ -32,7 +32,7 @@ void AGoalTrigger::BeginPlay()
 
 void AGoalTrigger::OnBallEnter(UPrimitiveComponent*, AActor* Other, UPrimitiveComponent*, int32, bool, const FHitResult&)
 {
-	ASoccerBall* Ball = Cast<ASoccerBall>(Other);
+	ASoccerBallVisual* Ball = Cast<ASoccerBallVisual>(Other);
 	if (!Ball)
 	{
 		return;

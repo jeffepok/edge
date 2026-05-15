@@ -117,3 +117,38 @@ FVector USimHostSubsystem::GetBallPositionWorld() const
 	if (!Sim) return FVector::ZeroVector;
 	return ToUE(Sim->GetState().Ball.Position);
 }
+
+// Convert UE5 cm (double) to sim Q32.32 Fixed64. Lossy but only used for resets.
+static edge26::Fixed64 ToFixed64(double cm)
+{
+	const double raw = cm * (double)edge26::Fixed64::One;
+	return edge26::Fixed64::FromRaw((int64_t)raw);
+}
+
+void USimHostSubsystem::ResetBall(FVector WorldPos)
+{
+	if (!Sim) return;
+	auto& BallState = Sim->MutableState().Ball;
+	BallState.Position = { ToFixed64(WorldPos.X), ToFixed64(WorldPos.Y), ToFixed64(WorldPos.Z) };
+	BallState.Velocity = edge26::FixedVec3::Zero();
+	BallState.AngularVelocity = edge26::FixedVec3::Zero();
+	BallState.Flags = 0;
+	// Sync interp cache so visuals don't lerp from the pre-reset position.
+	Sim->Snapshot(CurrState);
+	PrevState = CurrState;
+}
+
+void USimHostSubsystem::ResetPlayer(int32 ControllerIndex, FVector WorldPos, FRotator WorldRot)
+{
+	if (!Sim) return;
+	if (ControllerIndex < 0 || ControllerIndex >= edge26::kSimPlayerCount) return;
+	auto& P = Sim->MutableState().Players[ControllerIndex];
+	P.Position = { ToFixed64(WorldPos.X), ToFixed64(WorldPos.Y), ToFixed64(WorldPos.Z) };
+	P.Velocity = edge26::FixedVec3::Zero();
+	const double yawRad = FMath::DegreesToRadians(WorldRot.Yaw);
+	const int32_t yawRaw = (int32_t)(yawRad * (double)edge26::Fixed32::One);
+	P.Heading      = edge26::FixedAngle::FromRaw(yawRaw);
+	P.FacingTarget = P.Heading;
+	Sim->Snapshot(CurrState);
+	PrevState = CurrState;
+}

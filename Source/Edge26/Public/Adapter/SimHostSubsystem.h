@@ -36,6 +36,10 @@ public:
 	// Goal-trigger reads (spec §11).
 	FVector GetBallPositionWorld() const;
 
+	// Kickoff reset helpers (GameMode calls these).
+	void ResetBall(FVector WorldPos);
+	void ResetPlayer(int32 ControllerIndex, FVector WorldPos, FRotator WorldRot);
+
 private:
 	void DriveVisuals(float Alpha);
 

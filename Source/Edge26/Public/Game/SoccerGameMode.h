@@ -6,9 +6,9 @@
 #include "GameFramework/GameModeBase.h"
 #include "SoccerGameMode.generated.h"
 
-class ASoccerBall;
+class ASoccerBallVisual;
 class APlayerStart;
-class AFootballerCharacter;
+class AFootballerVisual;
 
 UENUM(BlueprintType)
 enum class EMatchPhase : uint8
@@ -79,7 +79,7 @@ public:
 protected:
 	void SetPhase(EMatchPhase NewPhase);
 	void EndKickoff();
-	ASoccerBall* FindOrCacheBall();
+	ASoccerBallVisual* FindOrCacheBall();
 
 private:
 	UPROPERTY(Transient)
@@ -92,7 +92,7 @@ private:
 	float MatchClock = 0.0f;
 
 	UPROPERTY(Transient)
-	TWeakObjectPtr<ASoccerBall> CachedBall;
+	TWeakObjectPtr<ASoccerBallVisual> CachedBall;
 
 	FTimerHandle KickoffResetHandle;
 	FTimerHandle KickoffStartHandle;
