@@ -1,4 +1,5 @@
 #include "Math/Fixed.h"
+#include "Math/Mul64.h"
 #include "TestHarness.h"
 
 using edge26::Fixed64;
@@ -25,9 +26,24 @@ TEST_CASE(Fixed64_Negation) {
     return 0;
 }
 
+TEST_CASE(Mul64Q32_BasicVectors) {
+    // a * b in Q32.32 where a, b are raw values.
+    int64_t a = (int64_t)2 << 32;
+    int64_t b = (int64_t)3 << 32;
+    int64_t prod = edge26::Mul64Q32(a, b);
+    TEST_EXPECT_EQ(prod >> 32, (int64_t)6);
+
+    a = (int64_t)-4 << 32;
+    b = (int64_t)5  << 32;
+    prod = edge26::Mul64Q32(a, b);
+    TEST_EXPECT_EQ(prod >> 32, (int64_t)-20);
+    return 0;
+}
+
 int RunMathTests() {
     TEST_RUN(Fixed64_FromInt_RoundTrip);
     TEST_RUN(Fixed64_Add);
     TEST_RUN(Fixed64_Negation);
+    TEST_RUN(Mul64Q32_BasicVectors);
     return 0;
 }
