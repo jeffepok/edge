@@ -1,0 +1,24 @@
+name: determinism
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  determinism:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install CMake (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: lukka/get-cmake@latest
+
+      - name: Run determinism gate
+        shell: bash
+        run: bash Scripts/check_determinism.sh
