@@ -184,6 +184,28 @@ TEST_CASE(Rollback_FullRoundTrip) {
     return 0;
 }
 
+TEST_CASE(Hash_PerTickStable) {
+    FInputFrame f{};
+    uint64_t hashes[100];
+    {
+        SimWorld w{0xFEED};
+        for (int i = 0; i < 100; ++i) {
+            f.TickNumber = (uint32_t)i;
+            f.Move[0][0] = (int8_t)((i * 3) % 200 - 100);
+            w.Step(f);
+            hashes[i] = w.HashState();
+        }
+    }
+    SimWorld w{0xFEED};
+    for (int i = 0; i < 100; ++i) {
+        f.TickNumber = (uint32_t)i;
+        f.Move[0][0] = (int8_t)((i * 3) % 200 - 100);
+        w.Step(f);
+        if (w.HashState() != hashes[i]) TEST_FAIL("divergence at tick %d", i);
+    }
+    return 0;
+}
+
 int RunSnapshotTests() {
     TEST_RUN(WorldState_Sizes);
     TEST_RUN(WorldState_Aligned);
@@ -197,5 +219,6 @@ int RunSnapshotTests() {
     TEST_RUN(Snapshot_RoundTrip);
     TEST_RUN(Hash_Stable);
     TEST_RUN(Rollback_FullRoundTrip);
+    TEST_RUN(Hash_PerTickStable);
     return 0;
 }
