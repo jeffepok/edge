@@ -2,22 +2,48 @@
 #include "Adapter/FootballerVisual.h"
 #include "Adapter/SimInputCollector.h"
 #include "Adapter/SimHostSubsystem.h"
+#include "Animation/AnimInstance.h"
 #include "Camera/BroadcastSpringArmComponent.h"
 #include "Camera/CameraComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Engine/SkeletalMesh.h"
 #include "Engine/World.h"
+#include "UObject/ConstructorHelpers.h"
 
 AFootballerVisual::AFootballerVisual()
 {
 	PrimaryActorTick.bCanEverTick = false;
 
+	// Auto-possess so the placed BP becomes the player pawn even without a Player Start.
+	AutoPossessPlayer = EAutoReceiveInput::Player0;
+
 	Mesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("Mesh"));
 	SetRootComponent(Mesh);
 	Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
+	// Default mesh + anim class so a fresh BP subclass is visible out of the box.
+	// BP subclasses can still override these in the editor.
+	static ConstructorHelpers::FObjectFinder<USkeletalMesh> DefaultMeshFinder(
+		TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple.SKM_Manny_Simple"));
+	if (DefaultMeshFinder.Succeeded())
+	{
+		Mesh->SetSkeletalMeshAsset(DefaultMeshFinder.Object);
+		// SKM_Manny is authored facing +Y; rotate so +X is forward.
+		Mesh->SetRelativeRotation(FRotator(0.0f, -90.0f, 0.0f));
+		// Drop Z so the mesh sits on the ground (otherwise the root pivot puts feet below).
+		Mesh->SetRelativeLocation(FVector(0.0f, 0.0f, 0.0f));
+	}
+	static ConstructorHelpers::FClassFinder<UAnimInstance> DefaultAnimClassFinder(
+		TEXT("/Game/Blueprints/Player/ABP_Footballer"));
+	if (DefaultAnimClassFinder.Succeeded())
+	{
+		Mesh->SetAnimInstanceClass(DefaultAnimClassFinder.Class);
+	}
+
 	SpringArm = CreateDefaultSubobject<UBroadcastSpringArmComponent>(TEXT("SpringArm"));
 	SpringArm->SetupAttachment(Mesh);
-	SpringArm->TargetArmLength = 400.0f;
+	SpringArm->SetRelativeLocation(FVector(0.0f, 0.0f, 90.0f));
+	SpringArm->TargetArmLength = 620.0f;
 
 	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
 	Camera->SetupAttachment(SpringArm);

@@ -4,12 +4,40 @@
 #include "Adapter/FootballerVisual.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "InputAction.h"
 #include "InputMappingContext.h"
 #include "GameFramework/PlayerController.h"
+#include "UObject/ConstructorHelpers.h"
 
 USimInputCollector::USimInputCollector()
 {
 	PrimaryComponentTick.bCanEverTick = false;
+
+	// Load default IMC + IA assets from /Game/Input/ so a fresh BP works without
+	// manual wiring. BP subclasses can override these in the Details panel.
+	static ConstructorHelpers::FObjectFinder<UInputMappingContext> IMCFinder(
+		TEXT("/Game/Input/IMC_Player.IMC_Player"));
+	if (IMCFinder.Succeeded()) DefaultMappingContext = IMCFinder.Object;
+
+	static ConstructorHelpers::FObjectFinder<UInputAction> IA_Move_Finder(
+		TEXT("/Game/Input/IA_Move.IA_Move"));
+	if (IA_Move_Finder.Succeeded()) IA_Move = IA_Move_Finder.Object;
+
+	static ConstructorHelpers::FObjectFinder<UInputAction> IA_Sprint_Finder(
+		TEXT("/Game/Input/IA_Sprint.IA_Sprint"));
+	if (IA_Sprint_Finder.Succeeded()) IA_Sprint = IA_Sprint_Finder.Object;
+
+	static ConstructorHelpers::FObjectFinder<UInputAction> IA_Pass_Finder(
+		TEXT("/Game/Input/IA_Pass.IA_Pass"));
+	if (IA_Pass_Finder.Succeeded()) IA_Pass = IA_Pass_Finder.Object;
+
+	static ConstructorHelpers::FObjectFinder<UInputAction> IA_Shoot_Finder(
+		TEXT("/Game/Input/IA_Shoot.IA_Shoot"));
+	if (IA_Shoot_Finder.Succeeded()) IA_Shoot = IA_Shoot_Finder.Object;
+
+	static ConstructorHelpers::FObjectFinder<UInputAction> IA_Chip_Finder(
+		TEXT("/Game/Input/IA_Chip.IA_Chip"));
+	if (IA_Chip_Finder.Succeeded()) IA_Chip = IA_Chip_Finder.Object;
 }
 
 void USimInputCollector::BeginPlay()
