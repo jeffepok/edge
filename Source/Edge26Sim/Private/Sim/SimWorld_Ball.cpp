@@ -71,7 +71,7 @@ void StepBall(FSimBallState& b) {
 }
 
 void MaybeApplyKick(FSimBallState& b, FSimPlayerState& p, const FInputFrame& frame,
-                    const FSimWorldState& state, int playerIdx)
+                    FSimWorldState& state, int playerIdx)
 {
     // Human players must have a bound controller; AI players use PendingButtons.
     // If this is a human player with no controller bound (kStationaryController), skip.
@@ -117,6 +117,20 @@ void MaybeApplyKick(FSimBallState& b, FSimPlayerState& p, const FInputFrame& fra
             dir.Z = Fixed64::FromInt(0);
         }
         b.Velocity = { dir.X * speed, dir.Y * speed, lift };
+
+        // Offside flag check: if the intended receiver is currently past the
+        // opposing team's offside line, start a 30-tick grace window.
+        if (p.IntendedPassTarget < (uint8_t)kSimPlayerCount) {
+            const auto& mate = state.Players[p.IntendedPassTarget];
+            Fixed64 posX  = mate.Position.X;
+            Fixed64 lineX = state.Match.OffsideLineY[1 - p.TeamId];
+            bool offside  = (p.TeamId == 0) ? (posX.Raw > lineX.Raw)
+                                            : (posX.Raw < lineX.Raw);
+            if (offside) {
+                state.Match.PendingOffsideCallTeam = (uint8_t)p.TeamId;
+                state.Match.PendingOffsideCallTick = state.TickNumber;
+            }
+        }
     } else {
         Fixed32 cosH = SimMath::Cos(p.Heading);
         Fixed32 sinH = SimMath::Sin(p.Heading);

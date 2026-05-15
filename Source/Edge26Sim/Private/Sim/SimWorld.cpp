@@ -45,7 +45,7 @@ SimWorld::SimWorld(uint64_t rngSeed) {
 extern void StepPlayer(FSimPlayerState& p, const FInputFrame& frame);
 extern void StepBall(FSimBallState& b);
 extern void MaybeApplyKick(FSimBallState& b, FSimPlayerState& p, const FInputFrame& frame,
-                           const FSimWorldState& state, int playerIdx);
+                           FSimWorldState& state, int playerIdx);
 
 static void UpdatePossession(FSimWorldState& s)
 {
