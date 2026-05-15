@@ -530,6 +530,27 @@ TEST_CASE(Sim_AICarrierFiresPass) {
     return 0;
 }
 
+TEST_CASE(AI_LateGameMentalityShift) {
+    using namespace edge26;
+    SimWorld w{1};
+    auto& st = w.MutableState();
+
+    // Home is trailing by 1 with 15 minutes left.
+    st.Match.Score[0] = 0;
+    st.Match.Score[1] = 1;
+    // TickNumber such that secsLeft = 15 minutes (900s)
+    // elapsed = 90*60 - 900 = 4500 seconds = 4500 * 50 = 225000 ticks.
+    st.TickNumber = 225000;
+
+    FInputFrame f{};
+    f.TickNumber = 225000;
+    w.Step(f);
+
+    TEST_EXPECT_EQ((int)st.Match.Plans[0].Mentality, 2);    // home pushed up
+    TEST_EXPECT_EQ((int)st.Match.Plans[1].Mentality, -1);   // away dropping (leading)
+    return 0;
+}
+
 int RunSnapshotTests() {
     TEST_RUN(WorldState_Sizes);
     TEST_RUN(WorldState_Aligned);
@@ -559,5 +580,6 @@ int RunSnapshotTests() {
     TEST_RUN(Sim_22PlayerTickStable);
     TEST_RUN(Sim_PossessionFlipsOnPickup);
     TEST_RUN(Sim_AICarrierFiresPass);
+    TEST_RUN(AI_LateGameMentalityShift);
     return 0;
 }
