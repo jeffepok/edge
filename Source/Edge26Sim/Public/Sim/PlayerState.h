@@ -25,7 +25,8 @@ struct FSimPlayerState {
     uint8_t     RoleId;              //  1 B (offset 59) — ERole
     uint8_t     CurrentIntent;       //  1 B (offset 60) — EIntent (written by Layer C; 0 until M3)
     uint8_t     IntendedPassTarget;  //  1 B (offset 61) — player idx (0xFF if none)
-    uint8_t     _pad[2];             //  2 B (offset 62-63) — explicit alignment
+    uint8_t     PendingButtons;      //  1 B (offset 62) — AI-set synthetic buttons (M4)
+    uint8_t     _pad0;               //  1 B (offset 63) — explicit alignment
     FixedVec3   AITargetPosition;    // 24 B (offset 64-87) — where AI wants the player to go
 };
 static_assert(sizeof(FSimPlayerState) == 88, "FSimPlayerState must be 88 bytes");
