@@ -16,9 +16,15 @@ SimWorld::SimWorld(uint64_t rngSeed) {
     }
 }
 
+extern void StepPlayer(FSimPlayerState& p, const FInputFrame& frame);
+
 void SimWorld::Step(const FInputFrame& frame) {
-    // Implemented in T2.5+ — stub for now.
     State.TickNumber = frame.TickNumber;
+
+    // Player updates in ascending ControllerIndex order (deterministic).
+    for (int i = 0; i < kSimPlayerCount; ++i) {
+        StepPlayer(State.Players[i], frame);
+    }
 }
 
 }  // namespace edge26
