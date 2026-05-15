@@ -41,6 +41,10 @@ USimInputCollector::USimInputCollector()
 	static ConstructorHelpers::FObjectFinder<UInputAction> IA_Chip_Finder(
 		TEXT("/Game/Input/IA_Chip.IA_Chip"));
 	if (IA_Chip_Finder.Succeeded()) IA_Chip = IA_Chip_Finder.Object;
+
+	static ConstructorHelpers::FObjectFinder<UInputAction> IA_Switch_Finder(
+		TEXT("/Game/Input/Actions/IA_Switch.IA_Switch"));
+	if (IA_Switch_Finder.Succeeded()) IA_Switch = IA_Switch_Finder.Object;
 }
 
 void USimInputCollector::BeginPlay()
@@ -91,6 +95,7 @@ void USimInputCollector::Bind(UEnhancedInputComponent* Component)
 	if (IA_Pass)   Component->BindAction(IA_Pass,  ETriggerEvent::Started, this, &USimInputCollector::OnPass);
 	if (IA_Shoot)  Component->BindAction(IA_Shoot, ETriggerEvent::Started, this, &USimInputCollector::OnShoot);
 	if (IA_Chip)   Component->BindAction(IA_Chip,  ETriggerEvent::Started, this, &USimInputCollector::OnChip);
+	if (IA_Switch) Component->BindAction(IA_Switch, ETriggerEvent::Started, this, &USimInputCollector::OnSwitch);
 }
 
 static USimHostSubsystem* HostFor(const UActorComponent* Self)
@@ -131,4 +136,9 @@ void USimInputCollector::OnShoot(const FInputActionValue&)
 void USimInputCollector::OnChip(const FInputActionValue&)
 {
 	if (auto* H = HostFor(this)) H->SetButton(ControllerIndexOf(this), 1 << 3, true);
+}
+
+void USimInputCollector::OnSwitch(const FInputActionValue&)
+{
+	if (auto* H = HostFor(this)) H->SetButton(ControllerIndexOf(this), 1 << 4, true);
 }
