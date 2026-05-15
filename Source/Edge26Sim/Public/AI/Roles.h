@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cstdint>
+#include "Math/Fixed.h"
 
 namespace edge26 {
 
@@ -20,5 +21,24 @@ enum class ERole : uint8_t {
     ST   = 9,   // Striker
     Count = 10
 };
+
+struct FRoleWeights {
+    // Off-ball multipliers (all in [0..2] roughly)
+    Fixed32  MakeRunForward;
+    Fixed32  HoldPosition;
+    Fixed32  DropToReceive;
+    Fixed32  ProvideWidth;
+    Fixed32  Press;
+    Fixed32  TrackRunner;
+    Fixed32  HoldDefensiveLine;
+    // On-ball multipliers
+    Fixed32  PreferPass;
+    Fixed32  PreferShoot;
+    Fixed32  PreferDribble;
+    Fixed32  PreferLongBall;
+};
+
+// Hardcoded role-weight table indexed by ERole. Defined in Roles.cpp.
+extern const FRoleWeights kRoleWeightsTable[(int)ERole::Count];
 
 }  // namespace edge26
