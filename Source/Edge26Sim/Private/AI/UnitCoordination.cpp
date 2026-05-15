@@ -3,12 +3,132 @@
 #include "AI/Roles.h"
 #include "Sim/WorldState.h"
 #include "Sim/MatchState.h"
+#include "Sim/Constants.h"
+#include "Math/Sqrt.h"
 
 namespace edge26 {
 
-void UpdateDefensiveUnit(FUnitState&, FSimWorldState&, int)  {}
-void UpdateMidfieldUnit (FUnitState&, FSimWorldState&, int)  {}
-void UpdateAttackUnit   (FUnitState&, FSimWorldState&, int)  {}
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+static Fixed64 SignForTeam(int teamId) {
+    return (teamId == 0) ? Fixed64::FromInt(1) : Fixed64::FromInt(-1);
+}
+
+// ---------------------------------------------------------------------------
+// Task T5.2 — UpdateDefensiveUnit
+// ---------------------------------------------------------------------------
+
+void UpdateDefensiveUnit(FUnitState& u, FSimWorldState& s, int teamId) {
+    // Average X of CBs + FBs (X is up-pitch in our frame).
+    Fixed64 sumX        = Fixed64::FromInt(0);
+    int     countX      = 0;
+    Fixed64 maxXForward = Fixed64::FromInt(-99999999) * SignForTeam(teamId);
+    int     lastDefIdx  = -1;
+
+    for (int i = 0; i < kSimPlayerCount; ++i) {
+        const auto& p = s.Players[i];
+        if (p.TeamId != teamId) continue;
+        if (UnitOf((ERole)p.RoleId) != 0) continue;
+        if (p.RoleId == (uint8_t)ERole::GK) continue;
+        sumX = sumX + p.Position.X;
+        ++countX;
+        // Find last defender (furthest from their own goal = highest signed forward).
+        Fixed64 forward     = p.Position.X * SignForTeam(teamId);
+        Fixed64 bestForward = maxXForward  * SignForTeam(teamId);
+        if (forward.Raw > bestForward.Raw) {
+            maxXForward = p.Position.X;
+            lastDefIdx  = i;
+        }
+    }
+    if (countX > 0) {
+        u.LineY = Fixed64::FromRaw(sumX.Raw / countX);
+        // LineHeightBias in [-1..+1] steps of 1, scaled to ±5m (500 cm) per step.
+        // Use Fixed64::operator* for safe 128-bit intermediate product.
+        const FTeamPlan& Plan = s.Match.Plans[teamId];
+        Fixed64 bias = Fixed64::FromInt((int)Plan.LineHeightBias * 500);
+        u.LineY = u.LineY + bias * SignForTeam(teamId);
+    }
+
+    // OffsideLineY = max-forward defender's X OR ball X, whichever is closer to
+    // their own goal (standard offside rule: use the less-advanced of the two).
+    Fixed64 ballX = s.Ball.Position.X;
+    if (lastDefIdx >= 0) {
+        Fixed64 a = maxXForward * SignForTeam(teamId);   // signed forward coord of last def
+        Fixed64 b = ballX       * SignForTeam(teamId);   // signed forward coord of ball
+        // Choose the one closer to own goal (lower signed-forward value).
+        Fixed64 lineForward = (a.Raw < b.Raw) ? a : b;
+        // Convert back to absolute X: multiply signed-forward by sign.
+        // Use Fixed64::operator* to avoid raw overflow.
+        s.Match.OffsideLineY[teamId] = lineForward * SignForTeam(teamId);
+    } else {
+        s.Match.OffsideLineY[teamId] = Fixed64::FromInt(0);
+    }
+
+    // Compactness = stddev of X positions (cheap proxy for defensive line spread).
+    if (countX > 1) {
+        Fixed64 meanX = u.LineY;
+        Fixed64 sumSq = Fixed64::FromInt(0);
+        for (int i = 0; i < kSimPlayerCount; ++i) {
+            const auto& p = s.Players[i];
+            if (p.TeamId != teamId) continue;
+            if (UnitOf((ERole)p.RoleId) != 0) continue;
+            if (p.RoleId == (uint8_t)ERole::GK) continue;
+            Fixed64 d = p.Position.X - meanX;
+            sumSq = sumSq + d * d;
+        }
+        Fixed64 var = Fixed64::FromRaw(sumSq.Raw / countX);
+        Fixed64 std = SimMath::Sqrt(var);
+        // Project to Fixed32 (compactness grows with stddev in cm / 1000).
+        u.Compactness = Fixed32::FromRaw((int32_t)(std.Raw * Fixed32::One / Fixed64::FromInt(1000).Raw));
+    }
+
+    // Press nomination: only when opponent has the ball.
+    if (s.Match.PossessionTeam != (uint8_t)teamId && s.Match.PossessionTeam != 0xFF) {
+        u.PressTrigger = 1;
+        // Pick nearest unit-member to ball.
+        int     bestIdx = 0xFF;
+        Fixed64 bestSq  = Fixed64::FromInt(99999999);
+        for (int i = 0; i < kSimPlayerCount; ++i) {
+            const auto& p = s.Players[i];
+            if (p.TeamId != teamId) continue;
+            if (UnitOf((ERole)p.RoleId) != 0) continue;
+            if (p.RoleId == (uint8_t)ERole::GK) continue;
+            Fixed64 dx = p.Position.X - s.Ball.Position.X;
+            Fixed64 dy = p.Position.Y - s.Ball.Position.Y;
+            // Clamp deltas to prevent overflow in the squared product.
+            constexpr int64_t kMaxDelta = (int64_t)15000 << 32;
+            if (dx.Raw >  kMaxDelta) dx.Raw =  kMaxDelta;
+            if (dx.Raw < -kMaxDelta) dx.Raw = -kMaxDelta;
+            if (dy.Raw >  kMaxDelta) dy.Raw =  kMaxDelta;
+            if (dy.Raw < -kMaxDelta) dy.Raw = -kMaxDelta;
+            Fixed64 dSq = dx * dx + dy * dy;
+            if (dSq.Raw < bestSq.Raw) { bestSq = dSq; bestIdx = i; }
+        }
+        u.PressTargetIdx = (uint8_t)bestIdx;
+    } else {
+        u.PressTrigger   = 0;
+        u.PressTargetIdx = 0xFF;
+    }
+    u.OverlapTriggerIdx = 0xFF;  // defense unit doesn't overlap
+}
+
+// ---------------------------------------------------------------------------
+// Task T5.3 — UpdateMidfieldUnit  (stub — filled in T5.3)
+// ---------------------------------------------------------------------------
+
+void UpdateMidfieldUnit(FUnitState&, FSimWorldState&, int)  {}
+
+// ---------------------------------------------------------------------------
+// Task T5.4 — UpdateAttackUnit  (stub — filled in T5.4)
+// ---------------------------------------------------------------------------
+
+void UpdateAttackUnit(FUnitState&, FSimWorldState&, int)  {}
+
+// ---------------------------------------------------------------------------
+// UpdateAllUnits
+// ---------------------------------------------------------------------------
 
 void UpdateAllUnits(FSimWorldState& s) {
     for (int team = 0; team < 2; ++team) {
