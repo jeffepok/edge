@@ -6,6 +6,7 @@
 #include "AI/Roles.h"
 #include "AI/SpatialValueModel.h"
 #include "AI/PlayerDecisions.h"
+#include "AI/UnitCoordination.h"
 #include <cstring>
 
 namespace edge26 {
@@ -85,6 +86,12 @@ void SimWorld::Step(const FInputFrame& frame) {
 
     // Update all 5 spatial value fields before any player/ball logic (spec §5).
     UpdateSpatialFields(State);
+
+    // Layer B: unit coordination at 10 Hz (every 5 ticks). Must run BEFORE
+    // Layer C so players can read updated nominations this same tick.
+    if (State.TickNumber % 5 == 0) {
+        UpdateAllUnits(State);
+    }
 
     // Layer C: per-AI player off-ball intent evaluation.
     for (int i = 0; i < kSimPlayerCount; ++i) {
