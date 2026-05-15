@@ -68,6 +68,83 @@ static Fixed32 BiasFromMentality(int8_t mentality, int8_t sign) {
     return Fixed32::FromRaw((int32_t)(Fixed32::One + adjusted * (Fixed32::One / 4)));
 }
 
+// Returns a probability in [0..1] (as Fixed32) that a pass from `from` to `to`
+// completes successfully. Cheap heuristic: 1 - (n_blockers / 4), clamped to [0,1].
+// "Blocker" = opposing player within 1.5m of the straight-line segment.
+static Fixed32 PassSuccessProbability(FixedVec3 from, FixedVec3 to,
+                                      int passingTeam, const FSimWorldState& s)
+{
+    FixedVec3 seg = to - from;
+    Fixed64   segLenSq = seg.X * seg.X + seg.Y * seg.Y;
+    if (segLenSq.Raw <= 0) return Fixed32::FromRaw(Fixed32::One);   // zero-length: trivially "succeeds"
+
+    // 1.5m = 150 cm
+    const Fixed64 kBlockerRadius = Fixed64::FromInt(150);
+    const Fixed64 kBlockerRSq    = kBlockerRadius * kBlockerRadius;
+
+    int blockers = 0;
+    for (int i = 0; i < kSimPlayerCount; ++i) {
+        const auto& opp = s.Players[i];
+        if (opp.TeamId == passingTeam) continue;
+        if (opp.RoleId == (uint8_t)ERole::GK) continue;
+
+        // Project opp onto segment.
+        FixedVec3 v = opp.Position - from;
+        // t = dot(v, seg) / segLen^2, clamped to [0,1]
+        Fixed64 dotvs = v.X * seg.X + v.Y * seg.Y;
+        if (dotvs.Raw < 0)                continue;        // before `from`
+        if (dotvs.Raw > segLenSq.Raw)     continue;        // past `to`
+        // Perp distance squared = |v|^2 - (dot)^2 / segLen^2
+        Fixed64 vLenSq = v.X * v.X + v.Y * v.Y;
+        Fixed64 projLenSq = Fixed64::FromRaw(
+            (int64_t)((__int128)dotvs.Raw * dotvs.Raw / segLenSq.Raw));  // SIM-LINT-OK: single __int128 use, same pattern as Mul64.h
+        Fixed64 perpSq = Fixed64::FromRaw(vLenSq.Raw - projLenSq.Raw);
+        if (perpSq.Raw < kBlockerRSq.Raw) ++blockers;
+    }
+
+    // success = max(0, 1 - blockers * 0.25)
+    int32_t successRaw = Fixed32::One - blockers * (Fixed32::One / 4);
+    if (successRaw < 0) successRaw = 0;
+    return Fixed32::FromRaw(successRaw);
+}
+
+// Pick the best teammate to pass to (or -1 if no candidates exist).
+// Score = PassReception[teammate's cell] * PassSuccessProb * forward bonus.
+static int BestPassReceiverIdx(const FSimPlayerState& carrier,
+                               const FSimWorldState& s,
+                               int passingTeam,
+                               Fixed32& outBestScore)
+{
+    int bestIdx = -1;
+    outBestScore = Fixed32::FromRaw(INT32_MIN);
+    for (int i = 0; i < kSimPlayerCount; ++i) {
+        if (i == s.Match.PossessionPlayer) continue;  // can't pass to self
+        const auto& mate = s.Players[i];
+        if (mate.TeamId != passingTeam) continue;
+        if (mate.RoleId == (uint8_t)ERole::GK) continue;
+        if (mate.Position == carrier.Position) continue;
+
+        int cellIdx = CellIndex(mate.Position);
+        Fixed32 prVal = s.Spatial.Cells[passingTeam][(int)ESpatialField::PassReception][cellIdx];
+        Fixed32 succ  = PassSuccessProbability(carrier.Position, mate.Position, passingTeam, s);
+
+        // Forward bonus: prefer up-pitch teammates.
+        Fixed64 forwardDelta = (mate.Position.X - carrier.Position.X) * SignForTeam(passingTeam);
+        Fixed32 forwardBonus = (forwardDelta.Raw > 0)
+            ? Fixed32::FromRaw((int32_t)((forwardDelta.Raw * (int64_t)Fixed32::One)
+                                         / SimConst::PitchHalfLen.Raw))
+            : Fixed32::FromRaw(0);
+        Fixed32 oneF32 = Fixed32::FromRaw(Fixed32::One);
+        Fixed32 score = prVal * succ * (oneF32 + forwardBonus);
+
+        if (score.Raw > outBestScore.Raw) {
+            outBestScore = score;
+            bestIdx = i;
+        }
+    }
+    return bestIdx;
+}
+
 // ---- The main off-ball evaluator -------------------------------------------
 
 static void EvaluateOffBall(FSimPlayerState& p, const FSimWorldState& s,
@@ -222,21 +299,162 @@ static void EvaluateOffBall(FSimPlayerState& p, const FSimWorldState& s,
     }
 }
 
+static void EvaluateOnBall(FSimPlayerState& p, const FSimWorldState& s,
+                           const FRoleWeights& W, int /*playerIdx*/,
+                           EIntent& bestIntent, FixedVec3& bestTarget, Fixed32& bestScore)
+{
+    const FTeamPlan& Plan = s.Match.Plans[p.TeamId];
+    int carrierCell = CellIndex(p.Position);
+
+    // 1. Pass
+    {
+        Fixed32 bestPassScore = Fixed32::FromRaw(INT32_MIN);
+        int receiverIdx = BestPassReceiverIdx(p, s, p.TeamId, bestPassScore);
+        if (receiverIdx >= 0) {
+            Fixed32 score = bestPassScore * W.PreferPass;
+            if (score.Raw > bestScore.Raw) {
+                bestIntent = EIntent::Pass;
+                bestTarget = s.Players[receiverIdx].Position;
+                bestScore  = score;
+                p.IntendedPassTarget = (uint8_t)receiverIdx;
+            }
+        }
+    }
+
+    // 2. Shoot — gated by "in opponent's third".
+    {
+        Fixed64 thirdLine = SimConst::PitchHalfLen * Fixed64::FromInt(1) / Fixed64::FromInt(3);
+        Fixed64 inOppThird = (p.Position.X * SignForTeam(p.TeamId)) - thirdLine;
+        if (inOppThird.Raw > 0) {
+            Fixed32 threat = s.Spatial.Cells[p.TeamId][(int)ESpatialField::Threat][carrierCell];
+            Fixed32 score  = threat * W.PreferShoot * Plan.MentalityShootBias;
+            // Target = opponent goal center.
+            FixedVec3 goalCenter {
+                SimConst::PitchHalfLen * SignForTeam(p.TeamId),
+                Fixed64::FromInt(0),
+                Fixed64::FromInt(0)
+            };
+            if (score.Raw > bestScore.Raw) {
+                bestIntent = EIntent::Shoot;
+                bestTarget = goalCenter;
+                bestScore  = score;
+            }
+        }
+    }
+
+    // 3. Dribble — pick the best-Space adjacent cell minus opp proximity penalty.
+    {
+        // 4-neighborhood in cell space.
+        int bestCellIdx = -1;
+        Fixed32 bestDribbleScore = Fixed32::FromRaw(INT32_MIN);
+        int cx = carrierCell % kPitchCellsX;
+        int cy = carrierCell / kPitchCellsX;
+        const int dxs[4] = { +1, -1,  0,  0 };
+        const int dys[4] = {  0,  0, +1, -1 };
+        for (int n = 0; n < 4; ++n) {
+            int nx = cx + dxs[n];
+            int ny = cy + dys[n];
+            if (nx < 0 || nx >= kPitchCellsX || ny < 0 || ny >= kPitchCellsY) continue;
+            int neighborCell = ny * kPitchCellsX + nx;
+            Fixed32 space = s.Spatial.Cells[p.TeamId][(int)ESpatialField::Space][neighborCell];
+
+            FixedVec3 cellPos = CellCenter(neighborCell);
+            // Nearest opponent penalty.
+            Fixed64 nearestSq = Fixed64::FromInt(99999999);
+            for (int i = 0; i < kSimPlayerCount; ++i) {
+                const auto& o = s.Players[i];
+                if (o.TeamId == p.TeamId) continue;
+                Fixed64 dSq = (o.Position.X - cellPos.X) * (o.Position.X - cellPos.X)
+                            + (o.Position.Y - cellPos.Y) * (o.Position.Y - cellPos.Y);
+                if (dSq.Raw < nearestSq.Raw) nearestSq = dSq;
+            }
+            Fixed64 nearestDist = SimMath::Sqrt(nearestSq);
+            // Penalty: max(0, 5m - nearestDist) / 5m
+            Fixed64 fiveM = Fixed64::FromInt(500);
+            int32_t penaltyRaw = 0;
+            if (nearestDist.Raw < fiveM.Raw) {
+                penaltyRaw = (int32_t)(((fiveM.Raw - nearestDist.Raw) * (int64_t)Fixed32::One)
+                                        / fiveM.Raw);
+            }
+            Fixed32 score = space * W.PreferDribble;
+            score = Fixed32::FromRaw(score.Raw - penaltyRaw);
+            if (score.Raw > bestDribbleScore.Raw) {
+                bestDribbleScore = score;
+                bestCellIdx = neighborCell;
+            }
+        }
+        if (bestCellIdx >= 0 && bestDribbleScore.Raw > bestScore.Raw) {
+            bestIntent = EIntent::Dribble;
+            bestTarget = CellCenter(bestCellIdx);
+            bestScore  = bestDribbleScore;
+        }
+    }
+
+    // 4. Hold — flat fallback weighted by Plan.HoldBias.
+    {
+        Fixed32 score = Plan.HoldBias;
+        // Multiply by small constant (0.5) so Hold is the "do nothing" default.
+        score = Fixed32::FromRaw(score.Raw / 2);
+        if (score.Raw > bestScore.Raw) {
+            bestIntent = EIntent::Hold;
+            bestTarget = p.Position;
+            bestScore  = score;
+        }
+    }
+
+    // 5. Clear — defender-only panic ball.
+    if (p.RoleId == (uint8_t)ERole::CB || p.RoleId == (uint8_t)ERole::FB_L
+        || p.RoleId == (uint8_t)ERole::FB_R)
+    {
+        // Target: 30m up-pitch, on carrier's lateral side.
+        Fixed64 thirtyM = Fixed64::FromInt(3000);
+        FixedVec3 target {
+            p.Position.X + thirtyM * SignForTeam(p.TeamId),
+            p.Position.Y,
+            Fixed64::FromInt(0)
+        };
+        // Estimate self-cell Threat (higher threat near own goal => panic ball more valuable).
+        Fixed32 ownThreat = s.Spatial.Cells[1 - p.TeamId][(int)ESpatialField::Threat][carrierCell];
+        Fixed32 score = W.PreferLongBall * ownThreat * Plan.PanicBias;
+        if (score.Raw > bestScore.Raw) {
+            bestIntent = EIntent::Clear;
+            bestTarget = target;
+            bestScore  = score;
+        }
+    }
+}
+
 void UpdatePlayerAI(FSimPlayerState& p, const FSimWorldState& s, int playerIdx) {
-    const FRoleWeights& W = kRoleWeightsTable[p.RoleId];
+    // Reset per-tick synthetic buttons (carrier may set them below).
+    p.PendingButtons = 0;
+
+    const FRoleWeights& W   = kRoleWeightsTable[p.RoleId];
+    const bool onBall       = (s.Match.PossessionPlayer == (uint8_t)playerIdx);
 
     EIntent   bestIntent = EIntent::HoldPosition;
     FixedVec3 bestTarget = SlotWorldPosition(SlotIndexForPlayer(playerIdx), p.TeamId);
     Fixed32   bestScore  = Fixed32::FromRaw(INT32_MIN);
 
-    EvaluateOffBall(p, s, W, playerIdx, bestIntent, bestTarget, bestScore);
-    // On-ball evaluation comes in M4.
+    if (onBall) {
+        EvaluateOnBall (p, s, W, playerIdx, bestIntent, bestTarget, bestScore);
+    } else {
+        EvaluateOffBall(p, s, W, playerIdx, bestIntent, bestTarget, bestScore);
+    }
 
-    p.CurrentIntent = (uint8_t)bestIntent;
+    p.CurrentIntent    = (uint8_t)bestIntent;
     p.AITargetPosition = bestTarget;
-    p.FacingTarget = SimMath::Atan2(
+    p.FacingTarget     = SimMath::Atan2(
         bestTarget.Y - p.Position.Y,
         bestTarget.X - p.Position.X);
+
+    // On-ball intents that fire a kick raise a synthetic button bit. The bit
+    // layout matches FInputFrame.Buttons (Sprint=1, Pass=2, Shoot=4, Chip=8).
+    switch (bestIntent) {
+        case EIntent::Pass:  p.PendingButtons |= (1 << 1); break;   // Pass
+        case EIntent::Shoot: p.PendingButtons |= (1 << 2); break;   // Shoot
+        case EIntent::Clear: p.PendingButtons |= (1 << 3); break;   // Chip (reuse chip impulse)
+        default: break;
+    }
 }
 
 }  // namespace edge26
