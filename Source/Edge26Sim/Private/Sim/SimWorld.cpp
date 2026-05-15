@@ -2,6 +2,8 @@
 #include "Sim/SimWorld.h"
 #include "Sim/Constants.h"
 #include "Math/Hash.h"
+#include "AI/Formations.h"
+#include "AI/Roles.h"
 #include <cstring>
 
 namespace edge26 {
@@ -11,14 +13,23 @@ SimWorld::SimWorld(uint64_t rngSeed) {
     std::memset(&State, 0, sizeof(State));
     State.RngState = (rngSeed != 0) ? rngSeed : 0xDEADBEEFCAFEBABEull;
 
-    // Initialize player ControllerIndex fields.
-    // Players 0-1 are human-controlled; 2-21 are stationary until AI is wired (Phase 2).
-    constexpr int kHumanPlayers = 2;
-    for (int i = 0; i < kHumanPlayers; ++i) {
-        State.Players[i].ControllerIndex = (uint8_t)i;            // P1 → 0, P2 → 1
-    }
-    for (int i = kHumanPlayers; i < kSimPlayerCount; ++i) {
-        State.Players[i].ControllerIndex = kStationaryController; // 0xFF = stationary
+    // Initialize each player's TeamId / RoleId / slot world position based on
+    // the 4-3-3 formation. Players 0..10 = home; players 11..21 = away.
+    for (int i = 0; i < kSimPlayerCount; ++i) {
+        FSimPlayerState& p = State.Players[i];
+        int teamId         = (i < 11) ? 0 : 1;
+        int slotIndex      = i % 11;
+        const FFormationSlot& slot = kFormation_4_3_3[slotIndex];
+
+        p.TeamId           = (uint8_t)teamId;
+        p.RoleId           = (uint8_t)slot.Role;
+        p.Position         = SlotWorldPosition(slotIndex, teamId);
+        p.Velocity         = FixedVec3::Zero();
+        p.AITargetPosition = p.Position;
+        p.ControllerIndex  = kStationaryController;  // vestigial; will be replaced in M9
+        p.IntendedPassTarget = 0xFF;
+        p.CurrentIntent    = 0;  // EIntent::HoldPosition (defined in M3)
+        p.Flags            = 0;
     }
 }
 

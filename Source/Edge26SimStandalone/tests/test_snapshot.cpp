@@ -2,6 +2,7 @@
 #include "Sim/SimWorld.h"
 #include "Sim/Constants.h"
 #include "AI/Formations.h"
+#include "AI/Roles.h"
 #include "TestHarness.h"
 #include <cstring>
 
@@ -25,24 +26,31 @@ TEST_CASE(SimWorld_FreshIsZeroExceptSeed) {
     TEST_EXPECT_EQ(s.TickNumber,    (uint32_t)0);
     TEST_EXPECT_EQ(s.RngState,      (uint64_t)0x123456789ABCDEF0ull);
     TEST_EXPECT_EQ(s.Ball.Position.X.Raw, (int64_t)0);
-    TEST_EXPECT_EQ(s.Players[0].ControllerIndex, (uint8_t)0);
-    TEST_EXPECT_EQ(s.Players[1].ControllerIndex, (uint8_t)1);
+    // All players are stationary after T1.5 (team/role/slot init; human binding in M9).
+    TEST_EXPECT_EQ(s.Players[0].ControllerIndex, kStationaryController);
+    TEST_EXPECT_EQ(s.Players[1].ControllerIndex, kStationaryController);
     TEST_EXPECT_EQ(s._pad0,                (uint32_t)0);
     return 0;
 }
 
 TEST_CASE(Player_StationaryNoInput) {
     SimWorld w{1};
+    // After T1.5 all players start at their formation slots with kStationaryController.
+    // Record the initial position and confirm it doesn't change after a step.
+    int64_t initX = w.GetState().Players[0].Position.X.Raw;
     FInputFrame f{};
     f.TickNumber = 1;
     w.Step(f);
-    TEST_EXPECT_EQ(w.GetState().Players[0].Position.X.Raw, (int64_t)0);
+    TEST_EXPECT_EQ(w.GetState().Players[0].Position.X.Raw, initX);
     TEST_EXPECT_EQ(w.GetState().Players[0].Velocity.X.Raw, (int64_t)0);
     return 0;
 }
 
 TEST_CASE(Player_RespondsToStickInput) {
     SimWorld w{1};
+    // After T1.5 all players have kStationaryController; wire player 0 to controller 0
+    // explicitly to test input response.
+    w.MutableState().Players[0].ControllerIndex = 0;
     FInputFrame f{};
     f.TickNumber = 1;
     f.Move[0][0] = 127;
@@ -87,6 +95,9 @@ TEST_CASE(Kick_PassImpulse) {
     w.MutableState().Ball.Position.Z = SimConst::BallRadius;
     w.MutableState().Players[0].Position = {Fixed64::FromInt(0), Fixed64::FromInt(50), Fixed64::FromInt(0)};
     w.MutableState().Players[0].Heading = FixedAngle::FromRaw(-FixedAngle::PiRaw() / 2);
+    // After T1.5 all players have kStationaryController; wire player 0 to controller 0
+    // so the Pass button is processed.
+    w.MutableState().Players[0].ControllerIndex = 0;
 
     FInputFrame f{};
     f.TickNumber = 1;
@@ -224,6 +235,29 @@ TEST_CASE(Formation_HomeAwaySymmetry) {
     return 0;
 }
 
+TEST_CASE(World_22PlayersAtSlots) {
+    SimWorld w{1};
+    const auto& s = w.GetState();
+    int homeCount = 0, awayCount = 0;
+    int gkCount = 0;
+    for (int i = 0; i < kSimPlayerCount; ++i) {
+        const auto& p = s.Players[i];
+        if (p.TeamId == 0) homeCount++;
+        else if (p.TeamId == 1) awayCount++;
+        if (p.RoleId == (uint8_t)ERole::GK) gkCount++;
+    }
+    TEST_EXPECT_EQ((int64_t)homeCount, (int64_t)11);
+    TEST_EXPECT_EQ((int64_t)awayCount, (int64_t)11);
+    TEST_EXPECT_EQ((int64_t)gkCount,   (int64_t)2);
+
+    // GK home should be near -X, GK away near +X (sanity from T1.3)
+    const auto& homeGK = s.Players[0];  // slot 0 is GK
+    const auto& awayGK = s.Players[11]; // slot 0 of away team
+    TEST_EXPECT_TRUE(homeGK.Position.X.Raw < 0);
+    TEST_EXPECT_TRUE(awayGK.Position.X.Raw > 0);
+    return 0;
+}
+
 int RunSnapshotTests() {
     TEST_RUN(WorldState_Sizes);
     TEST_RUN(WorldState_Aligned);
@@ -239,5 +273,6 @@ int RunSnapshotTests() {
     TEST_RUN(Rollback_FullRoundTrip);
     TEST_RUN(Hash_PerTickStable);
     TEST_RUN(Formation_HomeAwaySymmetry);
+    TEST_RUN(World_22PlayersAtSlots);
     return 0;
 }
