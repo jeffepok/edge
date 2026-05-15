@@ -184,6 +184,13 @@ static void EvaluateOffBall(FSimPlayerState& p, const FSimWorldState& s,
         Fixed32 penalty = DistancePenalty(target, p.Position);
         if (score.Raw > penalty.Raw) score = Fixed32::FromRaw(score.Raw - penalty.Raw);
         else score = Fixed32::FromRaw(0);
+        // Overlap nomination: 2× boost for the nominated FB (Layer B).
+        const FUnitState& attackUnit = s.Match.Units[p.TeamId][2];
+        if ((p.RoleId == (uint8_t)ERole::FB_L || p.RoleId == (uint8_t)ERole::FB_R)
+            && attackUnit.OverlapTriggerIdx == (uint8_t)playerIdx)
+        {
+            score = score * Fixed32::FromInt(2);
+        }
         if (score.Raw > bestScore.Raw) {
             bestIntent = EIntent::MakeRunForward; bestTarget = target; bestScore = score;
         }
@@ -218,40 +225,21 @@ static void EvaluateOffBall(FSimPlayerState& p, const FSimWorldState& s,
         }
     }
 
-    // 5. Press — only when opposing team has the ball AND this player is closest to ball.
+    // 5. Press — opp possession + I'm the nominated presser for my unit (Layer B).
     if (!ownTeamHasBall && s.Match.PossessionTeam != 0xFF
         && p.RoleId != (uint8_t)ERole::GK)
     {
-        // For v0 (pre Layer-B nomination): each player computes "am I nearest to ball on my team?".
-        FixedVec3 ballPos = s.Ball.Position;
-        Fixed64 dx0 = p.Position.X - ballPos.X;
-        Fixed64 dy0 = p.Position.Y - ballPos.Y;
-        // Clamp deltas before squaring to prevent overflow.
-        constexpr int64_t kMaxDelta = (int64_t)15000 << 32;
-        if (dx0.Raw >  kMaxDelta) dx0.Raw =  kMaxDelta;
-        if (dx0.Raw < -kMaxDelta) dx0.Raw = -kMaxDelta;
-        if (dy0.Raw >  kMaxDelta) dy0.Raw =  kMaxDelta;
-        if (dy0.Raw < -kMaxDelta) dy0.Raw = -kMaxDelta;
-        Fixed64 ourDistSq = dx0 * dx0 + dy0 * dy0;
-        bool iAmNearest = true;
-        for (int i = 0; i < kSimPlayerCount; ++i) {
-            if (i == playerIdx) continue;
-            const FSimPlayerState& other = s.Players[i];
-            if (other.TeamId != p.TeamId) continue;
-            Fixed64 odx = other.Position.X - ballPos.X;
-            Fixed64 ody = other.Position.Y - ballPos.Y;
-            if (odx.Raw >  kMaxDelta) odx.Raw =  kMaxDelta;
-            if (odx.Raw < -kMaxDelta) odx.Raw = -kMaxDelta;
-            if (ody.Raw >  kMaxDelta) ody.Raw =  kMaxDelta;
-            if (ody.Raw < -kMaxDelta) ody.Raw = -kMaxDelta;
-            Fixed64 otherDistSq = odx * odx + ody * ody;
-            if (otherDistSq.Raw < ourDistSq.Raw) { iAmNearest = false; break; }
-        }
-        if (iAmNearest) {
+        int myUnit = UnitOf((ERole)p.RoleId);
+        const FUnitState& unit = s.Match.Units[p.TeamId][myUnit];
+        bool iAmNominated = (unit.PressTrigger != 0)
+                          && (unit.PressTargetIdx == (uint8_t)playerIdx);
+
+        if (iAmNominated) {
             Fixed32 score = W.Press
-                * Fixed32::FromRaw(Fixed32::One * (1 + (int)Plan.PressIntensity) / 2);
+                * Fixed32::FromRaw(Fixed32::One * (1 + (int)Plan.PressIntensity) / 2)
+                * Fixed32::FromInt(3);                          // 3× boost for nominee
             if (score.Raw > bestScore.Raw) {
-                bestIntent = EIntent::Press; bestTarget = ballPos; bestScore = score;
+                bestIntent = EIntent::Press; bestTarget = s.Ball.Position; bestScore = score;
             }
         }
     }
