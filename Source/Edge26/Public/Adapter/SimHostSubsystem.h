@@ -60,4 +60,7 @@ private:
 
 	TArray<TWeakObjectPtr<AFootballerVisual>> Footballers;
 	TWeakObjectPtr<ASoccerBallVisual> Ball;
+
+	// M9: tracks last sim HumanControlledIndex to detect changes and re-Possess.
+	uint8 LastHumanControlledIndex = 0xFF;
 };

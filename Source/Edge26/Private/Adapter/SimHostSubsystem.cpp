@@ -3,6 +3,7 @@
 #include "Adapter/FootballerVisual.h"
 #include "Adapter/SoccerBallVisual.h"
 #include "Edge26.h"
+#include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
 #include "AI/Formations.h"
 #include <cstring>
@@ -35,6 +36,25 @@ void USimHostSubsystem::Tick(float DeltaTime)
 		PrevState = CurrState;
 		Sim->Step(CurrentInput);
 		Sim->Snapshot(CurrState);
+
+		// M9: re-Possess the right pawn when the sim's HumanControlledIndex changes.
+		const uint8 idxNow = (uint8)Sim->GetState().Match.HumanControlledIndex;
+		if (idxNow != LastHumanControlledIndex && idxNow != 0xFF)
+		{
+			if (auto* PC = GetWorld()->GetFirstPlayerController())
+			{
+				for (TActorIterator<AFootballerVisual> It(GetWorld()); It; ++It)
+				{
+					if ((uint8)It->ControllerIndex == idxNow)
+					{
+						PC->Possess(*It);
+						break;
+					}
+				}
+			}
+			LastHumanControlledIndex = idxNow;
+		}
+
 		CurrentTick++;
 		Accumulator -= TickDuration;
 	}
