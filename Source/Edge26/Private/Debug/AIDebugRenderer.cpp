@@ -124,5 +124,20 @@ void AAIDebugRenderer::Tick(float DeltaSeconds)
                 label, nullptr, col, 0.0f, true);
         }
     }
+
+    // --- Offside Lines ---
+    if (bShowOffsideLines)
+    {
+        // Pitch half-width = 34m = 3400 cm.
+        const float halfWidthCm = 3400.f;
+        for (int team = 0; team < 2; ++team)
+        {
+            float xCm = Edge26FixedToFloat(s.Match.OffsideLineY[team]);
+            FVector a{ xCm, -halfWidthCm, 30.f };
+            FVector b{ xCm,  halfWidthCm, 30.f };
+            FColor col = (team == 0) ? FColor::Cyan : FColor::Red;
+            DrawDebugLine(GetWorld(), a, b, col, false, -1.f, 0, 6.f);
+        }
+    }
 #endif
 }
