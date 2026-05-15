@@ -25,7 +25,10 @@ file(GLOB_RECURSE SIM_SOURCES
     ${SIM_ROOT}/Private/*.cpp
 )
 
-file(GLOB TEST_SOURCES tests/*.cpp)
+set(TEST_SOURCES
+    tests/test_math.cpp
+    tests/test_snapshot.cpp
+)
 
 add_executable(edge26_sim_replay
     main.cpp
@@ -38,5 +41,15 @@ add_executable(edge26_sim_replay
 target_include_directories(edge26_sim_replay PRIVATE
     ${SIM_ROOT}/Public
     ${SIM_ROOT}/Private
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+add_executable(replay_generator
+    tests/replay_generator.cpp
+    ReplayIO.cpp
+    ${SIM_HEADERS}
+)
+target_include_directories(replay_generator PRIVATE
+    ${SIM_ROOT}/Public
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
