@@ -13,9 +13,10 @@ interpolated transforms, rewritten RUNBOOK. Automated acceptance criteria
 (spec §14 #1–#4, #6–#8) all pass; PIE acceptance (§14 #5) confirmed
 working end-to-end.
 
-We are at **Phase 2 M2 of M12** (spatial value model). M1 (roster expansion)
-is complete: 22 players spawn at 4-3-3 slots, kickoff places them via the
-sim, determinism baselines regenerated, lint + CI gates still green. Spec:
+We are at **Phase 2 M3 of M12** (Layer C off-ball intents). M2 (spatial value model)
+is complete: FSpatialValueModel (70 KB) + FMatchState (184 B) embedded into
+FSimWorldState (72,936 B); 5 spatial-field update functions wired into SimWorld::Step
+at 50 Hz; baselines regenerated; lint + CI gates green. Spec:
 `docs/superpowers/specs/2026-05-15-phase2-spatial-ai-design.md`. Plan:
 `docs/superpowers/plans/2026-05-15-phase2-spatial-ai-plan.md`.
 
@@ -33,7 +34,7 @@ sim, determinism baselines regenerated, lint + CI gates still green. Spec:
 
 ### Phase 2: Spatial Value Model + 22-player AI  ←  current
 - [x] M1. Roster expansion: 22 players, roles, formations, kickoff placement
-- [ ] M2. Spatial Value Model (5 fields × 1768 cells)
+- [x] M2. Spatial Value Model (5 fields × 1768 cells)
 - [ ] M3. Layer C off-ball intents
 - [ ] M4. Layer C on-ball decisions
 - [ ] M5. Layer B unit coordination (defensive line, press, overlap)
@@ -68,3 +69,4 @@ sim, determinism baselines regenerated, lint + CI gates still green. Spec:
 - All v0 acceptance criteria green except the two manual steps. Phase 1 is shippable.
 - Post-merge PIE polish: filled BP-overlooked defaults into C++ constructors via ConstructorHelpers (SKM_Manny_Simple, ABP_Footballer, /Game/Input/* IAs, Engine sphere mesh) so re-parented BPs work without manual setup; SimHostSubsystem now seeds player/ball position from placed actor transforms (was teleporting to origin); IA_Look type fixed Boolean → Axis2D (Mouse XY can't bind to a Boolean action without ensure-fail); BP_OpponentFootballer set to AutoPossessPlayer=Disabled, ControllerIndex=1 via Python; IA_Move path mismatch fixed (loaded /Game/Input/IA_Move but IMC binds /Game/Input/Actions/IA_Move). WASD now drives the mannequin end-to-end. PIE acceptance criteria §14 #5 GREEN.
 - M1 landed: kSimPlayerCount 2→22, ERole enum, FFormationSlot + kFormation_4_3_3, FSimPlayerState 64→88 B, SimWorld ctor places 22, ResetAllPlayersTo4_3_3 in adapter, 22-player snapshot baselines regenerated, all unit tests pass.
+- M2 landed: FSpatialValueModel (70 KB) + FMatchState (184 B) embedded into FSimWorldState (72,936 B); 5 spatial-field update functions (Space, DefCoverage, LaneOccupancy, Threat, PassReception); UpdateSpatialFields wired into SimWorld::Step at 50 Hz; baselines regenerated; lint + CI gates green.
