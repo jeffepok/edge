@@ -18,7 +18,7 @@ The v0 deliverable proves the **architecture** end-to-end on a deliberately smal
 
 - 22 simultaneous players, AI, motion-matching, ragdolls, kicks-via-IK, set pieces, offside, fouls, goalkeepers, replays-as-feature, rollback netcode, anti-cheat, telemetry, console-platform CI runners, data-driven config, economy backend.
 
-A full enumeration of intentionally-deferred items lives in **§10 Scope Cuts**.
+A full enumeration of intentionally-deferred items lives in **§12 Scope Cuts**.
 
 ---
 
@@ -33,12 +33,58 @@ A full enumeration of intentionally-deferred items lives in **§10 Scope Cuts**.
 | D5 | Module layout | Separate `Edge26Sim` UE5 module + standalone CMake lib | Single module w/ folder discipline; separate module w/o standalone |
 | D6 | Migration of existing classes | Delete + replace with fresh visual-shell actors | Strip + repurpose in place; keep both alongside |
 | D7 | CI scope | Local script + GitHub Actions on Linux/macOS/Windows | Local only; with console runners |
+| D8 | Determinism surface | Sim kinematics + ball + contact events + decisions only. **Animation/IK/pose-selection/ragdoll are visual-only, forever.** | Deterministic IK in sim tick (over-engineered; `project_breakdown.md` §1.7 explicitly proposed this — we override) |
 
 These choices ripple through everything below; treat reversal of any of them as triggering a full re-design pass, not a patch.
 
 ---
 
-## 3. Module structure
+## 3. Sim/Render boundary principle (load-bearing — applies to every phase)
+
+**Only state that affects gameplay outcomes is deterministic. Everything visual is not, and never will be, part of the sim.** This principle overrides any conflicting language in `project_breakdown.md` and is the rule that future-phase designs must satisfy.
+
+### What is in the sim (deterministic, fixed-point, in the snapshot)
+
+- **Player kinematic state.** Position, velocity, heading, ground/sprint flags, balance scalar.
+- **Ball physics state.** Position, velocity, angular velocity (spin), ground flag. Magnus force, drag, bounce, friction.
+- **Contact events.** Tick, contact point in world space, which foot, foot velocity at contact, contact offset on the ball (for spin). *The sim decides the contact; rendering honors it.*
+- **Reach/balance/composure budget checks.** "Can this player make this contact, given attributes and current balance?" Answered with geometry + attributes — a handful of dot products and threshold comparisons. **Not** by running an IK solver to completion. If the budget allows it, the sim writes the contact event; if not, the sim writes a degraded event (miscontrol, lunge, foul-away). Both are deterministic outcomes.
+- **AI decisions.** Action chosen (pass/shoot/dribble/tackle/run), target picked. Computed from the spatial value field (which is itself deterministic).
+- **Outcome state.** Possession-holder, set-piece state, scoreline, match clock as it affects logic (e.g., 90+1 minute), RNG state, tick number.
+
+### What is NOT in the sim (cosmetic; can differ across machines)
+
+- **Pose selection (motion matching).** UE5's Pose Search runs on the render thread. Two clients picking slightly different clips is fine — the player's capsule is sim-authoritative; the visual mesh is drawn around it. Ball physics doesn't read animation.
+- **Two-bone IK during contact.** Once the sim has decided "foot lands here at this velocity," the render-side IK warps the leg to draw the contact. Joint angles can differ across clients with zero gameplay consequence.
+- **Foot-roll IK orientation.** Same reasoning.
+- **Approach warping / stride adjustment.** Visual-only adjustment of the gait around the sim-determined capsule path. The capsule does not move differently because of the warp.
+- **Ragdolls.** Already cosmetic in the breakdown.
+- **Look-at, head turn, facial.** Already cosmetic in the breakdown.
+- **Animation graph state-machine transitions.** Can be slightly different across machines — they don't feed back.
+
+### Why this is load-bearing
+
+Making any of the above deterministic signs us up for: a deterministic-FP discipline in three more subsystems, deterministic ports of every UE5 anim node we touch, custom IK math libraries with their own determinism tests, golden-image animation regression suites, CI gates that fail whenever a UE5 update changes pose-search internals. Multiply by 22 players × 50Hz: this is a months-of-engineering rabbit hole with no gameplay payoff because none of the visual output feeds back into outcomes.
+
+Keeping the deterministic surface to **player capsule kinematics, ball physics, contact events, decisions, RNG** is what makes rollback netcode and CI determinism gates tractable for one developer.
+
+### The three-question test ("should this be in the sim?")
+
+Before adding any subsystem to the sim, all three must be **yes**:
+
+1. Does the output of this subsystem feed back into player kinematics, ball physics, or a decision event?
+2. If two machines computed this slightly differently, would the ball or a player end up in a measurably different place 5 seconds later?
+3. Is this cheap enough to run at 50Hz × 22 entities under our determinism constraints?
+
+Any **no** → render-side. Most "should X be deterministic?" questions for football have the answer "no."
+
+### What this changes in v0
+
+Nothing concrete — v0 has no IK, no motion matching, no ragdolls. But codifying the principle now prevents the breakdown's IK-in-sim language from leaking into phase 3's design, and it tells future-us exactly where to draw the line.
+
+---
+
+## 4. Module structure
 
 ```
 Edge26/
@@ -117,7 +163,7 @@ The standalone CMake project compiles the same source files outside the UE5 buil
 
 ---
 
-## 4. The sim tick
+## 5. The sim tick
 
 ### Fixed timestep with accumulator
 
@@ -186,7 +232,7 @@ The AnimInstance is **purely cosmetic**. It computes `Speed`, `RelativeDirection
 
 ---
 
-## 5. Fixed-point math library
+## 6. Fixed-point math library
 
 ### Types
 
@@ -269,7 +315,7 @@ If any test fails, `check_determinism.sh` exits non-zero and the binary does not
 
 ---
 
-## 6. Sim world state and step function
+## 7. Sim world state and step function
 
 ### State (POD; everything that affects gameplay)
 
@@ -412,7 +458,7 @@ No aiming, no power meter, no contact quality. Real kicks belong to the motion-m
 
 ---
 
-## 7. Snapshot / Restore / Hash
+## 8. Snapshot / Restore / Hash
 
 ```cpp
 class SimWorld {
@@ -450,7 +496,7 @@ Every 30 ticks of the replay: snapshot. Advance 5 ticks. Restore. Advance 5 tick
 
 ---
 
-## 8. Headless test binary and determinism gate
+## 9. Headless test binary and determinism gate
 
 ### The binary
 
@@ -552,7 +598,7 @@ PS5/Xbox runners are explicitly out-of-scope for v0 (require dev kits in a lab).
 
 ---
 
-## 9. Existing-asset migration
+## 10. Existing-asset migration
 
 ### Blueprint re-parenting
 
@@ -618,7 +664,61 @@ The current RUNBOOK's "where I would start tomorrow" section is removed — that
 
 ---
 
-## 10. Scope cuts (what is explicitly NOT in v0)
+## 11. PROGRESS.md format
+
+`PROGRESS.md` lives at the repo root and is the living status tracker. Updated at the end of every coherent unit of work (not after every commit). Three sections, in this order:
+
+### 11.1 Current status
+
+One paragraph. Rewritten every update — never appended. Always reflects "where are we right now."
+
+Example:
+> We are in **Phase 1: Sim Core v0**, milestone **M3 of M7** (Snapshot/Restore). Fixed-point math library is complete and unit-tested across Linux/macOS/Windows; the SimWorld tick + state structs are landed. Working on snapshot/restore + xxhash + RNG next. ETA on v0 completion: ~N more sessions.
+
+### 11.2 Roadmap
+
+Checkboxes by phase and milestone. Items checked when they land on `main`. Phases beyond Phase 1 are placeholders that get expanded as they begin.
+
+```markdown
+### Phase 1: Deterministic Sim Core v0  ←  current
+- [x] M1. Fixed-point math library (`Fixed64`, `Fixed32`, `FixedVec3`, trig, sqrt)
+- [x] M2. SimWorld tick loop + InputFrame + SimBall/SimPlayer state structs
+- [ ] M3. Snapshot/Restore + xxhash + RNG
+- [ ] M4. Standalone headless binary + 3 input streams
+- [ ] M5. `check_determinism.sh` + GitHub Actions workflow + baseline files
+- [ ] M6. UE5 adapter (SimHost subsystem, AFootballerVisual, ASoccerBallVisual, reparent script)
+- [ ] M7. RUNBOOK rewrite for the new architecture
+
+### Phase 2: Spatial Value Model + 22-player AI  (placeholder)
+### Phase 3: Motion-matching animation + procedural ball-contact IK  (placeholder; render-side only per §3)
+### Phase 4: Rollback netcode  (placeholder)
+### Phase 5: Economy & compliance backend  (separate repo)
+```
+
+Renaming items is fine; adding items mid-phase is fine; deleting completed items is not (the historical record matters).
+
+### 11.3 Activity log
+
+Dated, newest first. One entry per work session. Format: *what landed, what's blocked, what's next.* Bullets, not paragraphs. No editorializing — no "great progress!", no success theater. If a session produced extensive detail it lives in commit messages and PR descriptions; the log is the executive summary.
+
+```markdown
+### 2026-05-15 — Session 1
+- Read project_breakdown.md; aligned with user on first slice (deterministic sim core).
+- Brainstormed v0 design end-to-end; spec committed to docs/superpowers/specs/2026-05-15-sim-core-v0-design.md.
+- Decisions locked: D1–D8 (see spec §2).
+- Next: implementation plan via writing-plans skill, then M1 (fixed-point math library).
+```
+
+### 11.4 Rules
+
+1. Status paragraph is rewritten every update — never append-only.
+2. Roadmap items checked when work merges. Don't pre-check.
+3. Activity log: newest first, factual only, brief.
+4. The doc is the source of truth for "what's the project state"; commit messages and PRs are the source of truth for "what was done in this change."
+
+---
+
+## 12. Scope cuts (what is explicitly NOT in v0)
 
 These are deliberate cuts. Mid-implementation, when you (or I) feel the pull to add one of these, the answer is no — it goes in a separate slice.
 
@@ -658,7 +758,7 @@ If the user (or I) asks "can we just add small thing X from this list" mid-v0, t
 
 ---
 
-## 11. Acceptance criteria (v0 is done when…)
+## 13. Acceptance criteria (v0 is done when…)
 
 1. `Scripts/check_determinism.sh` exits 0 on Linux, macOS, and Windows runners in a passing CI workflow.
 2. `Source/Edge26Sim/Edge26Sim.Build.cs` lists `Core` as its only public dependency, and the module compiles.
@@ -667,17 +767,17 @@ If the user (or I) asks "can we just add small thing X from this list" mid-v0, t
 5. In PIE on a developer's machine:
    - `BP_Footballer` instance visible in `L_Pitch` is driven by sim state. Verification: console command `edge26.sim.set_player_pos 0 100 200 0` updates `SimWorld.State.Players[0].Position`; visual actor's drawn transform tracks that across multiple ticks.
    - WASD moves P1; movement is deliberately simple — direction follows stick with bounded acceleration, no momentum preservation through turns, no stamina. Identical input from identical state produces identical motion frame-to-frame.
-   - Pressing Pass/Shoot/Chip near the ball applies a fixed impulse; the ball flies/rolls per the v0 ball model in §6.
+   - Pressing Pass/Shoot/Chip near the ball applies a fixed impulse; the ball flies/rolls per the v0 ball model in §7.
    - The ball entering a goal trigger raises a `GOAL!` HUD event.
 
    A small `SimDebug.h` exposes the console commands needed for verification (`set_player_pos`, `set_ball_pos`, `set_ball_vel`, `dump_state`). These are debug-build-only and disabled in shipping configs.
-6. `PROGRESS.md` exists at repo root with the format from §7 of this doc, and reflects the milestones above as checked.
+6. `PROGRESS.md` exists at repo root with the format from §11 of this doc, and reflects the milestones above as checked.
 7. `RUNBOOK.md` is rewritten and accurate against the new architecture.
 8. The decision log in §2 of this doc is up to date — any decisions revised during implementation are recorded with reasoning.
 
 ---
 
-## 12. Out-of-scope decisions parked for later
+## 14. Out-of-scope decisions parked for later
 
 Decisions deferred to subsequent slices, listed so we don't relitigate them while building v0:
 
