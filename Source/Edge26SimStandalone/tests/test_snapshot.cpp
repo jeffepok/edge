@@ -258,6 +258,24 @@ TEST_CASE(World_22PlayersAtSlots) {
     return 0;
 }
 
+TEST_CASE(World_22StationaryPlayersStable) {
+    SimWorld w{1};
+    FixedVec3 initial[kSimPlayerCount];
+    for (int i = 0; i < kSimPlayerCount; ++i)
+        initial[i] = w.GetState().Players[i].Position;
+
+    FInputFrame f{};
+    for (int tick = 0; tick < 100; ++tick) {
+        f.TickNumber = (uint32_t)tick;
+        w.Step(f);
+    }
+    for (int i = 0; i < kSimPlayerCount; ++i) {
+        TEST_EXPECT_EQ(w.GetState().Players[i].Position.X.Raw, initial[i].X.Raw);
+        TEST_EXPECT_EQ(w.GetState().Players[i].Position.Y.Raw, initial[i].Y.Raw);
+    }
+    return 0;
+}
+
 int RunSnapshotTests() {
     TEST_RUN(WorldState_Sizes);
     TEST_RUN(WorldState_Aligned);
@@ -274,5 +292,6 @@ int RunSnapshotTests() {
     TEST_RUN(Hash_PerTickStable);
     TEST_RUN(Formation_HomeAwaySymmetry);
     TEST_RUN(World_22PlayersAtSlots);
+    TEST_RUN(World_22StationaryPlayersStable);
     return 0;
 }
