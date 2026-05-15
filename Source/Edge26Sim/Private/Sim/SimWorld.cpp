@@ -7,6 +7,7 @@
 #include "AI/SpatialValueModel.h"
 #include "AI/PlayerDecisions.h"
 #include "AI/UnitCoordination.h"
+#include "AI/TeamStrategy.h"
 #include <cstring>
 
 namespace edge26 {
@@ -86,6 +87,12 @@ void SimWorld::Step(const FInputFrame& frame) {
 
     // Update all 5 spatial value fields before any player/ball logic (spec §5).
     UpdateSpatialFields(State);
+
+    // Layer A: team strategy at 2 Hz (every 25 ticks). Must run BEFORE
+    // Layer B so unit coordination can read updated plans this same tick.
+    if (State.TickNumber % 25 == 0) {
+        UpdateAllTeamStrategy(State);
+    }
 
     // Layer B: unit coordination at 10 Hz (every 5 ticks). Must run BEFORE
     // Layer C so players can read updated nominations this same tick.
