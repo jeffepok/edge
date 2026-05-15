@@ -50,4 +50,11 @@ struct Fixed64 {
     constexpr bool operator>=(Fixed64 o) const { return Raw >= o.Raw; }
 };
 
+constexpr Fixed64 Abs(Fixed64 a)  { return a.Raw < 0 ? Fixed64{-a.Raw} : a; }
+constexpr Fixed64 Min(Fixed64 a, Fixed64 b) { return a.Raw < b.Raw ? a : b; }
+constexpr Fixed64 Max(Fixed64 a, Fixed64 b) { return a.Raw > b.Raw ? a : b; }
+constexpr Fixed64 Clamp(Fixed64 v, Fixed64 lo, Fixed64 hi) {
+    return v.Raw < lo.Raw ? lo : (v.Raw > hi.Raw ? hi : v);
+}
+
 }  // namespace edge26

@@ -61,6 +61,17 @@ TEST_CASE(Fixed64_Divide) {
     return 0;
 }
 
+TEST_CASE(Fixed64_Helpers) {
+    using namespace edge26;
+    TEST_EXPECT_EQ(Abs(Fixed64::FromInt(-5)).ToInt(), (int64_t)5);
+    TEST_EXPECT_EQ(Abs(Fixed64::FromInt( 5)).ToInt(), (int64_t)5);
+    TEST_EXPECT_EQ(Min(Fixed64::FromInt(3), Fixed64::FromInt(7)).ToInt(), (int64_t)3);
+    TEST_EXPECT_EQ(Max(Fixed64::FromInt(3), Fixed64::FromInt(7)).ToInt(), (int64_t)7);
+    TEST_EXPECT_EQ(Clamp(Fixed64::FromInt(10),  Fixed64::FromInt(-2), Fixed64::FromInt(5)).ToInt(),  (int64_t)5);
+    TEST_EXPECT_EQ(Clamp(Fixed64::FromInt(-10), Fixed64::FromInt(-2), Fixed64::FromInt(5)).ToInt(), (int64_t)-2);
+    return 0;
+}
+
 int RunMathTests() {
     TEST_RUN(Fixed64_FromInt_RoundTrip);
     TEST_RUN(Fixed64_Add);
@@ -68,5 +79,6 @@ int RunMathTests() {
     TEST_RUN(Mul64Q32_BasicVectors);
     TEST_RUN(Fixed64_Multiply);
     TEST_RUN(Fixed64_Divide);
+    TEST_RUN(Fixed64_Helpers);
     return 0;
 }
