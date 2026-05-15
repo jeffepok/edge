@@ -8,6 +8,7 @@
 #include "AI/PlayerDecisions.h"
 #include "AI/UnitCoordination.h"
 #include "AI/TeamStrategy.h"
+#include "AI/GoalkeeperAI.h"
 #include <cstring>
 
 namespace edge26 {
@@ -151,10 +152,16 @@ void SimWorld::Step(const FInputFrame& frame) {
     }
 
     // Layer C: per-AI player off-ball intent evaluation.
+    // GKs get a dedicated AI path (UpdateGoalkeeperAI) instead of the generic
+    // Layer C intent loop (UpdatePlayerAI).
     for (int i = 0; i < kSimPlayerCount; ++i) {
         FSimPlayerState& p = State.Players[i];
         if (i == State.Match.HumanControlledIndex) continue;   // human is handled below
-        UpdatePlayerAI(p, State, i);
+        if (p.RoleId == (uint8_t)ERole::GK) {
+            UpdateGoalkeeperAI(p, State, i);
+        } else {
+            UpdatePlayerAI(p, State, i);
+        }
     }
 
     // Player updates in ascending ControllerIndex order (deterministic).
@@ -165,6 +172,7 @@ void SimWorld::Step(const FInputFrame& frame) {
     for (int i = 0; i < kSimPlayerCount; ++i) {
         MaybeApplyKick(State.Ball, State.Players[i], frame, State, i);
     }
+    MaybeGoalkeeperSave(State.Ball, State);  // M8 T8.4 — between kicks and offside resolve
     ResolveOffsideCall(State);               // M7 T7.2 — before possession update
     UpdatePossession(State);                 // M4 T4.4
     StepBall(State.Ball);

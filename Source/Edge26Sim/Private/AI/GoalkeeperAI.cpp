@@ -24,11 +24,18 @@ static Fixed64 SignForTeam(int teamId) {
 // Returns true if any opponent of `gkTeam` is within `r` cm of the ball.
 static bool OpponentNearBall(const FSimWorldState& s, int gkTeam, Fixed64 r) {
     Fixed64 rSq = r * r;
+    // Clamp deltas before squaring to prevent overflow (same pattern as other sim code).
+    constexpr int64_t kMaxDelta = (int64_t)15000 << 32;  // 150m cap per axis
     for (int i = 0; i < kSimPlayerCount; ++i) {
         const auto& p = s.Players[i];
         if (p.TeamId == (uint8_t)gkTeam) continue;
-        Fixed64 dSq = (p.Position.X - s.Ball.Position.X) * (p.Position.X - s.Ball.Position.X)
-                    + (p.Position.Y - s.Ball.Position.Y) * (p.Position.Y - s.Ball.Position.Y);
+        Fixed64 dx = p.Position.X - s.Ball.Position.X;
+        Fixed64 dy = p.Position.Y - s.Ball.Position.Y;
+        if (dx.Raw >  kMaxDelta) dx.Raw =  kMaxDelta;
+        if (dx.Raw < -kMaxDelta) dx.Raw = -kMaxDelta;
+        if (dy.Raw >  kMaxDelta) dy.Raw =  kMaxDelta;
+        if (dy.Raw < -kMaxDelta) dy.Raw = -kMaxDelta;
+        Fixed64 dSq = dx * dx + dy * dy;
         if (dSq.Raw < rSq.Raw) return true;
     }
     return false;
@@ -101,8 +108,15 @@ void MaybeGoalkeeperSave(FSimBallState& b, FSimWorldState& s)
         if (gkIdx < 0) continue;
         const FSimPlayerState& gk = s.Players[gkIdx];
 
-        FixedVec3 toBall = b.Position - gk.Position;
-        Fixed64 dist = SimMath::Sqrt(toBall.X * toBall.X + toBall.Y * toBall.Y);
+        // Clamp deltas before squaring to prevent overflow for out-of-pitch positions.
+        constexpr int64_t kMaxDelta = (int64_t)15000 << 32;  // 150m cap per axis
+        Fixed64 dx = b.Position.X - gk.Position.X;
+        Fixed64 dy = b.Position.Y - gk.Position.Y;
+        if (dx.Raw >  kMaxDelta) dx.Raw =  kMaxDelta;
+        if (dx.Raw < -kMaxDelta) dx.Raw = -kMaxDelta;
+        if (dy.Raw >  kMaxDelta) dy.Raw =  kMaxDelta;
+        if (dy.Raw < -kMaxDelta) dy.Raw = -kMaxDelta;
+        Fixed64 dist = SimMath::Sqrt(dx * dx + dy * dy);
         if (dist.Raw > SimConst::kGKReachRadius.Raw) continue;
         if (!BallMovingTowardGoal(b, t)) continue;
 

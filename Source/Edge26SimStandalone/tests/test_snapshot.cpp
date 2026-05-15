@@ -601,6 +601,38 @@ TEST_CASE(Sim_OffsideFlagAndResolve) {
     return 0;
 }
 
+TEST_CASE(Sim_GKSavesIncomingShot) {
+    using namespace edge26;
+    SimWorld w{1};
+    auto& st = w.MutableState();
+    // Park everyone off pitch.
+    for (int i = 0; i < kSimPlayerCount; ++i)
+        st.Players[i].Position = FixedVec3{ Fixed64::FromInt(99999), Fixed64::FromInt(99999), Fixed64::FromInt(0) };
+    // Home GK at -PitchHalfLen + 100 (own goal-line stance).
+    st.Players[0].TeamId = 0;
+    st.Players[0].RoleId = (uint8_t)ERole::GK;
+    st.Players[0].Position = FixedVec3{
+        -SimConst::PitchHalfLen + Fixed64::FromInt(100),
+        Fixed64::FromInt(0), Fixed64::FromInt(0)
+    };
+    // Ball coming straight at the GK from 50cm out.
+    st.Ball.Position = st.Players[0].Position + FixedVec3{
+        Fixed64::FromInt(50), Fixed64::FromInt(0), Fixed64::FromInt(0)
+    };
+    st.Ball.Velocity = FixedVec3{
+        Fixed64::FromInt(-1500), Fixed64::FromInt(0), Fixed64::FromInt(0)
+    };  // -15 m/s
+
+    FInputFrame f{};
+    f.TickNumber = 1;
+    w.Step(f);
+    // Save should have zeroed velocity and assigned possession to GK.
+    TEST_EXPECT_EQ(st.Ball.Velocity.X.Raw, (int64_t)0);
+    TEST_EXPECT_EQ(st.Match.PossessionTeam,   (uint8_t)0);
+    TEST_EXPECT_EQ(st.Match.PossessionPlayer, (uint8_t)0);
+    return 0;
+}
+
 int RunSnapshotTests() {
     TEST_RUN(WorldState_Sizes);
     TEST_RUN(WorldState_Aligned);
@@ -632,5 +664,6 @@ int RunSnapshotTests() {
     TEST_RUN(Sim_AICarrierFiresPass);
     TEST_RUN(AI_LateGameMentalityShift);
     TEST_RUN(Sim_OffsideFlagAndResolve);
+    TEST_RUN(Sim_GKSavesIncomingShot);
     return 0;
 }
