@@ -13,11 +13,11 @@ interpolated transforms, rewritten RUNBOOK. Automated acceptance criteria
 (spec §14 #1–#4, #6–#8) all pass; PIE acceptance (§14 #5) confirmed
 working end-to-end.
 
-We are at **Phase 2 M3 of M12** (Layer C off-ball intents). M2 (spatial value model)
-is complete: FSpatialValueModel (70 KB) + FMatchState (184 B) embedded into
-FSimWorldState (72,936 B); 5 spatial-field update functions wired into SimWorld::Step
-at 50 Hz; baselines regenerated; lint + CI gates green. Spec:
-`docs/superpowers/specs/2026-05-15-phase2-spatial-ai-design.md`. Plan:
+We are at **Phase 2 M4 of M12** (Layer C on-ball decisions). M3 (Layer C off-ball intents)
+is complete: EIntent enum (12 values), FRoleWeights + kRoleWeightsTable[10 roles], 7-intent
+EvaluateOffBall evaluator with saturation-safe distance arithmetic wired into SimWorld::Step
+at 50 Hz; Sim_22PlayerTickStable smoke test passes; baselines regenerated; lint + CI gates green.
+Spec: `docs/superpowers/specs/2026-05-15-phase2-spatial-ai-design.md`. Plan:
 `docs/superpowers/plans/2026-05-15-phase2-spatial-ai-plan.md`.
 
 ## Roadmap
@@ -35,7 +35,7 @@ at 50 Hz; baselines regenerated; lint + CI gates green. Spec:
 ### Phase 2: Spatial Value Model + 22-player AI  ←  current
 - [x] M1. Roster expansion: 22 players, roles, formations, kickoff placement
 - [x] M2. Spatial Value Model (5 fields × 1768 cells)
-- [ ] M3. Layer C off-ball intents
+- [x] M3. Layer C off-ball intents
 - [ ] M4. Layer C on-ball decisions
 - [ ] M5. Layer B unit coordination (defensive line, press, overlap)
 - [ ] M6. Layer A team strategy (mentality, late-game adjustments)
@@ -70,3 +70,4 @@ at 50 Hz; baselines regenerated; lint + CI gates green. Spec:
 - Post-merge PIE polish: filled BP-overlooked defaults into C++ constructors via ConstructorHelpers (SKM_Manny_Simple, ABP_Footballer, /Game/Input/* IAs, Engine sphere mesh) so re-parented BPs work without manual setup; SimHostSubsystem now seeds player/ball position from placed actor transforms (was teleporting to origin); IA_Look type fixed Boolean → Axis2D (Mouse XY can't bind to a Boolean action without ensure-fail); BP_OpponentFootballer set to AutoPossessPlayer=Disabled, ControllerIndex=1 via Python; IA_Move path mismatch fixed (loaded /Game/Input/IA_Move but IMC binds /Game/Input/Actions/IA_Move). WASD now drives the mannequin end-to-end. PIE acceptance criteria §14 #5 GREEN.
 - M1 landed: kSimPlayerCount 2→22, ERole enum, FFormationSlot + kFormation_4_3_3, FSimPlayerState 64→88 B, SimWorld ctor places 22, ResetAllPlayersTo4_3_3 in adapter, 22-player snapshot baselines regenerated, all unit tests pass.
 - M2 landed: FSpatialValueModel (70 KB) + FMatchState (184 B) embedded into FSimWorldState (72,936 B); 5 spatial-field update functions (Space, DefCoverage, LaneOccupancy, Threat, PassReception); UpdateSpatialFields wired into SimWorld::Step at 50 Hz; baselines regenerated; lint + CI gates green.
+- M3 landed: EIntent enum (12 values, 7 off-ball + 5 on-ball stubs), FRoleWeights struct + kRoleWeightsTable[10 roles] with per-role multipliers, full EvaluateOffBall evaluator (7 intents: HoldPosition, MakeRunForward, DropToReceive, ProvideWidth, Press, TrackRunner, HoldDefensiveLine) scored from spatial value fields with saturation-safe distance arithmetic; UpdatePlayerAI wired into SimWorld::Step at 50 Hz; Sim_22PlayerTickStable smoke test (22 players, 100 ticks, position bounds check) passes; baselines regenerated; lint + CI gates green. Judgment call: F32() helper uses compile-time double with SIM-LINT-OK annotation (avoids 110 pre-computed integer literals).
