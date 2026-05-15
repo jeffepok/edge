@@ -635,6 +635,52 @@ TEST_CASE(Sim_GKSavesIncomingShot) {
     return 0;
 }
 
+TEST_CASE(Sim_ManualSwitchSuppressesAutoSwitch) {
+    using namespace edge26;
+    SimWorld w{1};
+    auto& st = w.MutableState();
+    // Park all players far off-pitch; possession unowned; ball in opp half.
+    // This prevents any AI carrier-pass from disturbing the ball position.
+    for (int i = 0; i < kSimPlayerCount; ++i)
+        st.Players[i].Position = FixedVec3{ Fixed64::FromInt(99999), Fixed64::FromInt(99999), Fixed64::FromInt(0) };
+    // Two home outfielders at different distances to ball.
+    // Player 2 closer to ball (200 cm), player 3 farther (10000 cm).
+    // Both use kStationaryController (default from SimWorld ctor) so StepPlayer skips them.
+    st.Players[2].TeamId = 0; st.Players[2].RoleId = (uint8_t)ERole::CM;
+    st.Players[2].Position = FixedVec3{ Fixed64::FromInt(200), Fixed64::FromInt(0), Fixed64::FromInt(0) };
+    st.Players[3].TeamId = 0; st.Players[3].RoleId = (uint8_t)ERole::CM;
+    st.Players[3].Position = FixedVec3{ Fixed64::FromInt(10000), Fixed64::FromInt(0), Fixed64::FromInt(0) };
+    // Ball placed 500 cm from both players — no pickup (> 80cm radius).
+    st.Ball.Position = FixedVec3::Zero();
+    st.Ball.Velocity = FixedVec3::Zero();
+    st.Match.HumanControlledIndex = 2;
+    st.Match.PossessionTeam   = 0xFF;
+    st.Match.PossessionPlayer = 0xFF;
+
+    // Manual switch: should jump from 2 → 3 (next nearest skipping 2).
+    FInputFrame f{};
+    f.TickNumber = 100;
+    f.Buttons[0] = InputButton::Switch;
+    w.Step(f);
+    TEST_EXPECT_EQ(st.Match.HumanControlledIndex, (uint8_t)3);
+
+    // Next tick (no button) — auto-switch would normally return 2 (nearer to ball)
+    // but cooldown should suppress it.
+    f.Buttons[0] = 0;
+    f.TickNumber = 101;
+    w.Step(f);
+    TEST_EXPECT_EQ(st.Match.HumanControlledIndex, (uint8_t)3);
+
+    // After cooldown (25 ticks from tick 100), auto-switch reasserts.
+    // Cooldown expires at tick 125 (125 < 100+25 is false).
+    for (int t = 102; t < 130; ++t) {
+        f.TickNumber = (uint32_t)t;
+        w.Step(f);
+    }
+    TEST_EXPECT_EQ(st.Match.HumanControlledIndex, (uint8_t)2);
+    return 0;
+}
+
 TEST_CASE(Sim_ChooseHumanControlled_Carrier) {
     using namespace edge26;
     SimWorld w{1};
@@ -695,6 +741,7 @@ int RunSnapshotTests() {
     TEST_RUN(AI_LateGameMentalityShift);
     TEST_RUN(Sim_OffsideFlagAndResolve);
     TEST_RUN(Sim_GKSavesIncomingShot);
+    TEST_RUN(Sim_ManualSwitchSuppressesAutoSwitch);
     TEST_RUN(Sim_ChooseHumanControlled_Carrier);
     TEST_RUN(Sim_ChooseHumanControlled_NoPossession_PicksNearest);
     return 0;

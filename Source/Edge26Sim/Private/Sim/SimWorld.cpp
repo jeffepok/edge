@@ -1,6 +1,7 @@
 // Copyright Edge26. All Rights Reserved.
 #include "Sim/SimWorld.h"
 #include "Sim/Constants.h"
+#include "Sim/InputFrame.h"
 #include "Math/Hash.h"
 #include "AI/Formations.h"
 #include "AI/Roles.h"
@@ -9,6 +10,7 @@
 #include "AI/UnitCoordination.h"
 #include "AI/TeamStrategy.h"
 #include "AI/GoalkeeperAI.h"
+#include "AI/Switching.h"
 #include <cstring>
 
 namespace edge26 {
@@ -134,6 +136,25 @@ static void UpdatePossession(FSimWorldState& s)
     }
 }
 
+static void ApplySwitching(FSimWorldState& s, const FInputFrame& frame, int humanTeam)
+{
+    // Manual switch — button edge (Buttons[0] bit 4): advance to next-nearest, set cooldown.
+    if (frame.Buttons[0] & InputButton::Switch) {
+        int nxt = NextSwitchTarget(s, humanTeam, s.Match.HumanControlledIndex);
+        if (nxt >= 0) {
+            s.Match.HumanControlledIndex = (uint8_t)nxt;
+            s.Match.LastManualSwitchTick = s.TickNumber;
+        }
+        return;     // skip auto-switch this tick
+    }
+    // Auto-switch suppressed during 25-tick cooldown after a manual switch.
+    const uint32_t kCooldownTicks = 25;
+    if (s.TickNumber < s.Match.LastManualSwitchTick + kCooldownTicks) return;
+
+    int target = ChooseHumanControlled(s, humanTeam);
+    if (target >= 0) s.Match.HumanControlledIndex = (uint8_t)target;
+}
+
 void SimWorld::Step(const FInputFrame& frame) {
     State.TickNumber = frame.TickNumber;
 
@@ -177,6 +198,10 @@ void SimWorld::Step(const FInputFrame& frame) {
     ResolveOffsideCall(State);               // M7 T7.2 — before possession update
     UpdatePossession(State);                 // M4 T4.4
     StepBall(State.Ball);
+
+    // Auto/manual switching for the human team.
+    // HumanTeam in v0 is always 0 (home). Future: read from match config.
+    ApplySwitching(State, frame, /*humanTeam*/ 0);
 }
 
 void SimWorld::Snapshot(FSimWorldState& out) const {

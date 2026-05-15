@@ -33,7 +33,7 @@ int ChooseHumanControlled(const FSimWorldState& s, int humanTeam)
 
     // 2. Nearest non-GK teammate to ball.
     int   bestIdx = -1;
-    Fixed64 bestSq = Fixed64::FromInt(99999999);
+    Fixed64 bestSq = Fixed64::FromInt(999999999);
     for (int i = 0; i < kSimPlayerCount; ++i) {
         const auto& p = s.Players[i];
         if (p.TeamId != (uint8_t)humanTeam) continue;
@@ -47,7 +47,7 @@ int ChooseHumanControlled(const FSimWorldState& s, int humanTeam)
 int NextSwitchTarget(const FSimWorldState& s, int humanTeam, int currentIdx)
 {
     int   bestIdx = -1;
-    Fixed64 bestSq = Fixed64::FromInt(99999999);
+    Fixed64 bestSq = Fixed64::FromInt(999999999);
     for (int i = 0; i < kSimPlayerCount; ++i) {
         if (i == currentIdx) continue;
         const auto& p = s.Players[i];
