@@ -5,6 +5,7 @@
 #include "Math/Trig.h"
 #include "Math/Sqrt.h"
 #include "Math/Atan2.h"
+#include "Math/Rng.h"
 #include "TestHarness.h"
 
 using edge26::Fixed64;
@@ -190,6 +191,24 @@ TEST_CASE(Atan2_QuadrantAnchors) {
     return 0;
 }
 
+TEST_CASE(Rng_DeterministicSequence) {
+    using edge26::Rng;
+    Rng r1{0x123456789ABCDEF0ull};
+    Rng r2{0x123456789ABCDEF0ull};
+    for (int i = 0; i < 100; ++i) {
+        TEST_EXPECT_EQ(r1.NextU64(), r2.NextU64());
+    }
+    return 0;
+}
+
+TEST_CASE(Rng_DistinctSeedsDistinctSequences) {
+    using edge26::Rng;
+    Rng r1{1};
+    Rng r2{2};
+    TEST_EXPECT_TRUE(r1.NextU64() != r2.NextU64());
+    return 0;
+}
+
 int RunMathTests() {
     TEST_RUN(Fixed64_FromInt_RoundTrip);
     TEST_RUN(Fixed64_Add);
@@ -207,5 +226,7 @@ int RunMathTests() {
     TEST_RUN(Sqrt_AnchorValues);
     TEST_RUN(Sqrt_Monotonic);
     TEST_RUN(Atan2_QuadrantAnchors);
+    TEST_RUN(Rng_DeterministicSequence);
+    TEST_RUN(Rng_DistinctSeedsDistinctSequences);
     return 0;
 }
