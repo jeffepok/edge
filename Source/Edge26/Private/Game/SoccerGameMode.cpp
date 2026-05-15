@@ -81,23 +81,8 @@ void ASoccerGameMode::ResetForKickoff()
 	}
 
 	Host->ResetBall(BallSpawnLocation);
-
-	TArray<APlayerStart*> Starts;
-	for (TActorIterator<APlayerStart> It(GetWorld()); It; ++It)
-	{
-		Starts.Add(*It);
-	}
-
-	int32 Idx = 0;
-	for (TActorIterator<AFootballerVisual> It(GetWorld()); It; ++It)
-	{
-		AFootballerVisual* F = *It;
-		if (Starts.IsValidIndex(Idx))
-		{
-			Host->ResetPlayer(F->ControllerIndex, Starts[Idx]->GetActorLocation(), Starts[Idx]->GetActorRotation());
-		}
-		++Idx;
-	}
+	// M1: place all 22 players at 4-3-3 slots (replaces PlayerStart iteration).
+	Host->ResetAllPlayersTo4_3_3();
 }
 
 void ASoccerGameMode::EndKickoff()

@@ -40,6 +40,10 @@ public:
 	void ResetBall(FVector WorldPos);
 	void ResetPlayer(int32 ControllerIndex, FVector WorldPos, FRotator WorldRot);
 
+	// M1: position all 22 players at 4-3-3 slots (called by GameMode on kickoff).
+	// Iterates the sim state and writes both sim state AND visual actor transforms.
+	void ResetAllPlayersTo4_3_3();
+
 private:
 	void DriveVisuals(float Alpha);
 

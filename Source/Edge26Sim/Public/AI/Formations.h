@@ -5,6 +5,7 @@
 #pragma once
 
 #include <cstdint>
+#include "Edge26SimAPI.h"
 #include "AI/Roles.h"
 #include "Math/Fixed.h"
 #include "Math/FixedVec.h"
@@ -18,10 +19,10 @@ struct FFormationSlot {
 };
 
 // 11 slots. GK first, then defenders, mids, attackers.
-extern const FFormationSlot kFormation_4_3_3[11];
+EDGE26SIM_API extern const FFormationSlot kFormation_4_3_3[11];
 
 // Compute the world position for a slot, given the team (0=home, 1=away).
 // Home defends -Y end; away defends +Y end (so NormalizedX flips for away).
-FixedVec3 SlotWorldPosition(int slotIndex, int teamId);
+EDGE26SIM_API FixedVec3 SlotWorldPosition(int slotIndex, int teamId);
 
 }  // namespace edge26

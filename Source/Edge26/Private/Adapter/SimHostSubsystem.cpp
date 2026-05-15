@@ -4,6 +4,7 @@
 #include "Adapter/SoccerBallVisual.h"
 #include "Edge26.h"
 #include "GameFramework/PlayerController.h"
+#include "AI/Formations.h"
 #include <cstring>
 
 using namespace edge26;
@@ -172,6 +173,24 @@ void USimHostSubsystem::ResetPlayer(int32 ControllerIndex, FVector WorldPos, FRo
 	const int32_t yawRaw = (int32_t)(yawRad * (double)edge26::Fixed32::One);
 	P.Heading      = edge26::FixedAngle::FromRaw(yawRaw);
 	P.FacingTarget = P.Heading;
+	Sim->Snapshot(CurrState);
+	PrevState = CurrState;
+}
+
+void USimHostSubsystem::ResetAllPlayersTo4_3_3()
+{
+	if (!Sim) return;
+	auto& State = Sim->MutableState();
+	for (int i = 0; i < edge26::kSimPlayerCount; ++i)
+	{
+		int teamId = (i < 11) ? 0 : 1;
+		int slotIndex = i % 11;
+		edge26::FixedVec3 slotPos = edge26::SlotWorldPosition(slotIndex, teamId);
+		State.Players[i].Position = slotPos;
+		State.Players[i].Velocity = edge26::FixedVec3::Zero();
+		State.Players[i].TeamId = (uint8_t)teamId;
+		State.Players[i].RoleId = (uint8_t)edge26::kFormation_4_3_3[slotIndex].Role;
+	}
 	Sim->Snapshot(CurrState);
 	PrevState = CurrState;
 }
