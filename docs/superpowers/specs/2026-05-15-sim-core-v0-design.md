@@ -18,7 +18,7 @@ The v0 deliverable proves the **architecture** end-to-end on a deliberately smal
 
 - 22 simultaneous players, AI, motion-matching, ragdolls, kicks-via-IK, set pieces, offside, fouls, goalkeepers, replays-as-feature, rollback netcode, anti-cheat, telemetry, console-platform CI runners, data-driven config, economy backend.
 
-A full enumeration of intentionally-deferred items lives in **§12 Scope Cuts**.
+A full enumeration of intentionally-deferred items lives in **§13 Scope Cuts**.
 
 ---
 
@@ -34,6 +34,7 @@ A full enumeration of intentionally-deferred items lives in **§12 Scope Cuts**.
 | D6 | Migration of existing classes | Delete + replace with fresh visual-shell actors | Strip + repurpose in place; keep both alongside |
 | D7 | CI scope | Local script + GitHub Actions on Linux/macOS/Windows | Local only; with console runners |
 | D8 | Determinism surface | Sim kinematics + ball + contact events + decisions only. **Animation/IK/pose-selection/ragdoll are visual-only, forever.** | Deterministic IK in sim tick (over-engineered; `project_breakdown.md` §1.7 explicitly proposed this — we override) |
+| D9 | Determinism enforcement | Build-system boundary + explicit FORBIDDEN/REQUIRED rules in §4 + `Scripts/lint_sim.sh` grep gate + strict-warnings-as-errors | Convention/review only (loses to a tired contributor at 2 a.m.) |
 
 These choices ripple through everything below; treat reversal of any of them as triggering a full re-design pass, not a patch.
 
@@ -84,7 +85,78 @@ Nothing concrete — v0 has no IK, no motion matching, no ragdolls. But codifyin
 
 ---
 
-## 4. Module structure
+## 4. Determinism rules (the enforceable checklist)
+
+§3 is the *principle*. This section is the *enforceable rules*. A future contributor — or future-me — should be able to read this in 30 seconds and know exactly what is and isn't allowed inside `Edge26Sim/`.
+
+### 4.1 FORBIDDEN inside `Edge26Sim/`
+
+These are flat-out banned. Most are also caught by the build system (the module's `Build.cs` only depends on `Core`, the CMake standalone build doesn't link any of them). A few aren't caught at build time and rely on review + grep — those are flagged.
+
+| Forbidden | Why | Catch |
+|---|---|---|
+| Floating-point types (`float`, `double`, `FVector`, `FRotator`, `FQuat`, `FMath::*`, `Vector3D`) | Not bit-identical across compilers/SIMD/FMA | `grep` lint in CI (`grep -rn 'float\|double\|FVector\|FRotator\|FMath' Source/Edge26Sim/`) |
+| Hash-ordered containers (`std::unordered_map`, `std::unordered_set`, `TMap`, `TSet`) | Iteration order depends on bucket layout = non-deterministic | grep lint |
+| Threads / async (`std::thread`, `std::async`, `ParallelFor`, `FRunnable`, `Async()`) | Introduces ordering variance | grep lint |
+| Wall-clock time (`std::chrono::*::now`, `FDateTime::Now`, `FPlatformTime::*`, `time()`, `clock()`) | Different across machines / runs | grep lint |
+| UE5 Engine APIs (`#include "Engine/...`, `#include "GameFramework/...`, `#include "Chaos/...`, `UObject`, `AActor`, anything `UCLASS`/`UFUNCTION`/`UPROPERTY`) | Pulls non-deterministic engine state into sim | `Build.cs` (Core-only dep) + grep |
+| Non-PRNG randomness (`std::rand`, `std::random_device`, `FMath::RandRange`, `std::mt19937` with non-snapshotted state) | State outside the snapshot | grep lint |
+| Heap allocation during `Step()` (`new`, `malloc`, `TArray::Add`, `std::vector::push_back`, anything that grows containers) | Allocator behavior + addresses leak into state | grep lint on the `Step()` call-path source files |
+| Exceptions (`throw`, `try/catch`) | Behavior differs across compilers; slow path | grep lint |
+| C++ static / global mutable state | Hidden state outside the snapshot | grep lint (`static [a-zA-Z]` outside `constexpr`) |
+| Virtual functions in sim-state structs | vtable pointers in serialized state = chaos | review |
+| Signed-integer-overflow-as-arithmetic (relying on UB wrap) | UB; behavior varies by compiler/flags | use unsigned for wrap, or compile with `-fwrapv` (still flagged) |
+| Conditional compilation that changes behavior (`#ifdef PLATFORM_X` producing different math) | Different platforms compute differently | review — the only allowed `#ifdef` is `Math/Mul64.h` (64×64→128 multiply), which is exhaustively tested |
+| Reading any UE5 frame delta (`DeltaSeconds` from a Tick callback) inside the sim | Wall-clock leakage | review — sim always uses its own `TickDuration` constant |
+
+### 4.2 REQUIRED inside `Edge26Sim/`
+
+| Required | Reason |
+|---|---|
+| Deterministic iteration order | Iterate over fixed-size arrays by index (`for i in 0..N`), never over hash containers. When iterating two sets of entities, define a stable order (e.g., players in ascending `ControllerIndex`). |
+| Fixed update order within a tick | Players updated in index order; ball after players; AI decisions before kinematics. Documented at the top of `SimWorld::Step`. |
+| Explicit zero-initialization of state structs | `memset(&state, 0, sizeof(state))` before any field assignment. Default constructors don't zero implicit pad bytes; only `memset` does. |
+| Stable hashing | xxhash64 (vendored, MIT). Same bytes in → same bytes out, on every platform, forever. |
+| Fixed iteration counts in iterative solvers | `Sqrt` runs 8 Newton iterations always. `Atan2` runs 20 CORDIC iterations always. **Never** "loop until error < epsilon" — that's compiler-dependent. |
+| `static_assert` on every state struct size and alignment | Catches accidental layout changes from refactors. |
+| All sim parameters as `constexpr` | No `.ini` reads, no runtime tunables, no UObject CDOs. Constants live in `Sim/Constants.h`. |
+| Single PRNG instance per `SimWorld`, state in the snapshot | All randomness flows from one `uint64` seeded state; rollback re-rolls identically. |
+| All sim-state structs POD | No constructors, destructors, virtuals. `static_assert(std::is_trivially_copyable_v<T>)` on each. |
+| `Step()` is allocation-free | Verified by overriding `operator new`/`operator delete` to assert in test builds when called inside `Step()`. |
+| Compile with strict warnings as errors | `-Wall -Wextra -Werror` (clang/gcc); `/W4 /WX` (MSVC). Catches uninitialized reads, narrowing conversions, sign mismatches. |
+
+### 4.3 The single allowed platform-conditional code
+
+`Source/Edge26Sim/Public/Math/Mul64.h` — the 64×64 → 128-bit multiply needed for Q32.32 multiplication. Three implementations gated by `#if defined(__SIZEOF_INT128__)` / `#elif defined(_MSC_VER)` / `#else #error`. Tested by a checked-in vector table of (a, b, expected_result) tuples that the CI determinism gate runs on every platform; if any platform's implementation produces a different result for any vector, the build fails before sim tests even start.
+
+This is the **only** platform-conditional code permitted in `Edge26Sim/`. New ones require a doc PR justifying the exception and adding test vectors.
+
+### 4.4 Build-system enforcement (in addition to the rules above)
+
+- `Edge26Sim.Build.cs` declares `Core` as its only public/private dependency. Any attempt to add `Engine`, `Chaos`, `AnimGraphRuntime`, etc. fails review.
+- `Source/Edge26SimStandalone/CMakeLists.txt` builds the same sim sources without any UE5 toolchain. Any accidental UE5 include in `Edge26Sim/` breaks the standalone build, caught by CI on all three runner OSes.
+- `Scripts/lint_sim.sh` runs the grep lints (forbidden tokens) on every PR. Exits non-zero if it finds any. Hooked into `check_determinism.sh` so the local pre-push run also catches them.
+
+### 4.5 What `Scripts/lint_sim.sh` looks for (illustrative — exact list lives in the script)
+
+```bash
+# Anti-patterns inside Source/Edge26Sim/
+PATTERNS=(
+    '\bfloat\b'  '\bdouble\b'  'FVector\b'  'FRotator\b'  'FQuat\b'  'FMath::'
+    'std::unordered_'  'TMap<'  'TSet<'
+    'std::thread'  'std::async'  'ParallelFor'  'FRunnable'  'Async\('
+    'std::chrono'  'FDateTime'  'FPlatformTime'  '\btime\('  '\bclock\('
+    '#include\s*"Engine/'  '#include\s*"GameFramework/'  '#include\s*"Chaos/'
+    'std::rand'  'std::random_device'  'FMath::Rand'
+    '\bnew\b'  '\bmalloc\b'  '\btry\b'  '\bthrow\b'
+)
+```
+
+False positives (e.g., `floating-point` in a comment) are suppressed by an inline `// SIM-LINT-OK: <reason>` marker. Comments are encouraged because they document *why* the exception is safe.
+
+---
+
+## 5. Module structure
 
 ```
 Edge26/
@@ -163,7 +235,7 @@ The standalone CMake project compiles the same source files outside the UE5 buil
 
 ---
 
-## 5. The sim tick
+## 6. The sim tick
 
 ### Fixed timestep with accumulator
 
@@ -232,7 +304,7 @@ The AnimInstance is **purely cosmetic**. It computes `Speed`, `RelativeDirection
 
 ---
 
-## 6. Fixed-point math library
+## 7. Fixed-point math library
 
 ### Types
 
@@ -315,7 +387,7 @@ If any test fails, `check_determinism.sh` exits non-zero and the binary does not
 
 ---
 
-## 7. Sim world state and step function
+## 8. Sim world state and step function
 
 ### State (POD; everything that affects gameplay)
 
@@ -458,7 +530,7 @@ No aiming, no power meter, no contact quality. Real kicks belong to the motion-m
 
 ---
 
-## 8. Snapshot / Restore / Hash
+## 9. Snapshot / Restore / Hash
 
 ```cpp
 class SimWorld {
@@ -496,7 +568,7 @@ Every 30 ticks of the replay: snapshot. Advance 5 ticks. Restore. Advance 5 tick
 
 ---
 
-## 9. Headless test binary and determinism gate
+## 10. Headless test binary and determinism gate
 
 ### The binary
 
@@ -547,7 +619,10 @@ Alongside each input, a checked-in `<name>.expected.hashes` file: one line per t
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-cmake -S Source/Edge26SimStandalone -B build/sim -DCMAKE_BUILD_TYPE=Release
+bash Scripts/lint_sim.sh                       # §4 grep gate runs first; cheap
+
+cmake -S Source/Edge26SimStandalone -B build/sim -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_CXX_FLAGS="-Wall -Wextra -Werror"  # §4 strict-warnings
 cmake --build build/sim --parallel
 
 ./build/sim/edge26_sim_replay --self-test
@@ -598,7 +673,7 @@ PS5/Xbox runners are explicitly out-of-scope for v0 (require dev kits in a lab).
 
 ---
 
-## 10. Existing-asset migration
+## 11. Existing-asset migration
 
 ### Blueprint re-parenting
 
@@ -664,18 +739,18 @@ The current RUNBOOK's "where I would start tomorrow" section is removed — that
 
 ---
 
-## 11. PROGRESS.md format
+## 12. PROGRESS.md format
 
 `PROGRESS.md` lives at the repo root and is the living status tracker. Updated at the end of every coherent unit of work (not after every commit). Three sections, in this order:
 
-### 11.1 Current status
+### 12.1 Current status
 
 One paragraph. Rewritten every update — never appended. Always reflects "where are we right now."
 
 Example:
 > We are in **Phase 1: Sim Core v0**, milestone **M3 of M7** (Snapshot/Restore). Fixed-point math library is complete and unit-tested across Linux/macOS/Windows; the SimWorld tick + state structs are landed. Working on snapshot/restore + xxhash + RNG next. ETA on v0 completion: ~N more sessions.
 
-### 11.2 Roadmap
+### 12.2 Roadmap
 
 Checkboxes by phase and milestone. Items checked when they land on `main`. Phases beyond Phase 1 are placeholders that get expanded as they begin.
 
@@ -697,7 +772,7 @@ Checkboxes by phase and milestone. Items checked when they land on `main`. Phase
 
 Renaming items is fine; adding items mid-phase is fine; deleting completed items is not (the historical record matters).
 
-### 11.3 Activity log
+### 12.3 Activity log
 
 Dated, newest first. One entry per work session. Format: *what landed, what's blocked, what's next.* Bullets, not paragraphs. No editorializing — no "great progress!", no success theater. If a session produced extensive detail it lives in commit messages and PR descriptions; the log is the executive summary.
 
@@ -705,11 +780,11 @@ Dated, newest first. One entry per work session. Format: *what landed, what's bl
 ### 2026-05-15 — Session 1
 - Read project_breakdown.md; aligned with user on first slice (deterministic sim core).
 - Brainstormed v0 design end-to-end; spec committed to docs/superpowers/specs/2026-05-15-sim-core-v0-design.md.
-- Decisions locked: D1–D8 (see spec §2).
+- Decisions locked: D1–D9 (see spec §2).
 - Next: implementation plan via writing-plans skill, then M1 (fixed-point math library).
 ```
 
-### 11.4 Rules
+### 12.4 Rules
 
 1. Status paragraph is rewritten every update — never append-only.
 2. Roadmap items checked when work merges. Don't pre-check.
@@ -718,7 +793,7 @@ Dated, newest first. One entry per work session. Format: *what landed, what's bl
 
 ---
 
-## 12. Scope cuts (what is explicitly NOT in v0)
+## 13. Scope cuts (what is explicitly NOT in v0)
 
 These are deliberate cuts. Mid-implementation, when you (or I) feel the pull to add one of these, the answer is no — it goes in a separate slice.
 
@@ -758,26 +833,27 @@ If the user (or I) asks "can we just add small thing X from this list" mid-v0, t
 
 ---
 
-## 13. Acceptance criteria (v0 is done when…)
+## 14. Acceptance criteria (v0 is done when…)
 
 1. `Scripts/check_determinism.sh` exits 0 on Linux, macOS, and Windows runners in a passing CI workflow.
-2. `Source/Edge26Sim/Edge26Sim.Build.cs` lists `Core` as its only public dependency, and the module compiles.
-3. `Source/Edge26SimStandalone` builds with `cmake --build` on any of the three platforms without a UE5 toolchain present.
+2. `Scripts/lint_sim.sh` (the §4 grep gate) exits 0 on a fresh `Edge26Sim/` tree.
+3. `Source/Edge26Sim/Edge26Sim.Build.cs` lists `Core` as its only public dependency, and the module compiles with `-Wall -Wextra -Werror` (`/W4 /WX` on MSVC).
+4. `Source/Edge26SimStandalone` builds with `cmake --build` on any of the three platforms without a UE5 toolchain present.
 4. The standalone binary's `--rollback-test` mode passes — snapshot/restore round-trip produces identical hashes.
 5. In PIE on a developer's machine:
    - `BP_Footballer` instance visible in `L_Pitch` is driven by sim state. Verification: console command `edge26.sim.set_player_pos 0 100 200 0` updates `SimWorld.State.Players[0].Position`; visual actor's drawn transform tracks that across multiple ticks.
    - WASD moves P1; movement is deliberately simple — direction follows stick with bounded acceleration, no momentum preservation through turns, no stamina. Identical input from identical state produces identical motion frame-to-frame.
-   - Pressing Pass/Shoot/Chip near the ball applies a fixed impulse; the ball flies/rolls per the v0 ball model in §7.
+   - Pressing Pass/Shoot/Chip near the ball applies a fixed impulse; the ball flies/rolls per the v0 ball model in §8.
    - The ball entering a goal trigger raises a `GOAL!` HUD event.
 
    A small `SimDebug.h` exposes the console commands needed for verification (`set_player_pos`, `set_ball_pos`, `set_ball_vel`, `dump_state`). These are debug-build-only and disabled in shipping configs.
-6. `PROGRESS.md` exists at repo root with the format from §11 of this doc, and reflects the milestones above as checked.
+6. `PROGRESS.md` exists at repo root with the format from §12 of this doc, and reflects the milestones above as checked.
 7. `RUNBOOK.md` is rewritten and accurate against the new architecture.
 8. The decision log in §2 of this doc is up to date — any decisions revised during implementation are recorded with reasoning.
 
 ---
 
-## 14. Out-of-scope decisions parked for later
+## 15. Out-of-scope decisions parked for later
 
 Decisions deferred to subsequent slices, listed so we don't relitigate them while building v0:
 
@@ -843,6 +919,7 @@ Source/Edge26/Private/Adapter/  (mirrored .cpp tree)
 Scripts/
     check_determinism.sh
     update_determinism_baseline.sh
+    lint_sim.sh                       (§4 grep gate; FORBIDDEN-token check)
     editor/reparent_blueprints.py
 
 .github/workflows/
