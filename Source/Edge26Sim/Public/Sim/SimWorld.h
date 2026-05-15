@@ -2,12 +2,13 @@
 #pragma once
 
 #include <cstdint>
+#include "Edge26SimAPI.h"
 #include "Sim/WorldState.h"
 #include "Sim/InputFrame.h"
 
 namespace edge26 {
 
-class SimWorld {
+class EDGE26SIM_API SimWorld {
 public:
     explicit SimWorld(uint64_t rngSeed);
 

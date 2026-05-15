@@ -24,6 +24,8 @@ file(GLOB_RECURSE SIM_HEADERS
 file(GLOB_RECURSE SIM_SOURCES
     ${SIM_ROOT}/Private/*.cpp
 )
+# Exclude UE5-only files (module bootstrap etc.) from the standalone build.
+list(FILTER SIM_SOURCES EXCLUDE REGEX "/Private/UE5/")
 
 set(TEST_SOURCES
     tests/test_math.cpp
