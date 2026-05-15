@@ -3,6 +3,7 @@
 #include "Math/FixedVec.h"
 #include "Math/FixedAngle.h"
 #include "Math/Trig.h"
+#include "Math/Sqrt.h"
 #include "TestHarness.h"
 
 using edge26::Fixed64;
@@ -151,6 +152,25 @@ TEST_CASE(Trig_SinCos_AnchorValues) {
     return 0;
 }
 
+TEST_CASE(Sqrt_AnchorValues) {
+    using namespace edge26;
+    TEST_EXPECT_NEAR_INT(SimMath::Sqrt(Fixed64::FromInt(4)).Raw, Fixed64::FromInt(2).Raw, 64);
+    TEST_EXPECT_NEAR_INT(SimMath::Sqrt(Fixed64::FromInt(100)).Raw, Fixed64::FromInt(10).Raw, 1024);
+    TEST_EXPECT_EQ(SimMath::Sqrt(Fixed64::FromInt(0)).Raw, (int64_t)0);
+    return 0;
+}
+
+TEST_CASE(Sqrt_Monotonic) {
+    using namespace edge26;
+    Fixed64 prev = SimMath::Sqrt(Fixed64::FromInt(0));
+    for (int i = 1; i <= 1000; ++i) {
+        Fixed64 cur = SimMath::Sqrt(Fixed64::FromInt(i));
+        TEST_EXPECT_TRUE(cur.Raw >= prev.Raw);
+        prev = cur;
+    }
+    return 0;
+}
+
 int RunMathTests() {
     TEST_RUN(Fixed64_FromInt_RoundTrip);
     TEST_RUN(Fixed64_Add);
@@ -165,5 +185,7 @@ int RunMathTests() {
     TEST_RUN(FixedAngle_Normalization);
     TEST_RUN(Trig_SinCos_Identity);
     TEST_RUN(Trig_SinCos_AnchorValues);
+    TEST_RUN(Sqrt_AnchorValues);
+    TEST_RUN(Sqrt_Monotonic);
     return 0;
 }
