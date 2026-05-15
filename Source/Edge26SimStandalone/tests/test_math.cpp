@@ -1,5 +1,6 @@
 #include "Math/Fixed.h"
 #include "Math/Mul64.h"
+#include "Math/FixedVec.h"
 #include "TestHarness.h"
 
 using edge26::Fixed64;
@@ -83,6 +84,30 @@ TEST_CASE(Fixed32_Basics) {
     return 0;
 }
 
+TEST_CASE(FixedVec3_AddScale) {
+    using namespace edge26;
+    FixedVec3 a{Fixed64::FromInt(1), Fixed64::FromInt(2), Fixed64::FromInt(3)};
+    FixedVec3 b{Fixed64::FromInt(4), Fixed64::FromInt(5), Fixed64::FromInt(6)};
+    FixedVec3 sum = a + b;
+    TEST_EXPECT_EQ(sum.X.ToInt(), (int64_t)5);
+    TEST_EXPECT_EQ(sum.Y.ToInt(), (int64_t)7);
+    TEST_EXPECT_EQ(sum.Z.ToInt(), (int64_t)9);
+
+    FixedVec3 scaled = a * Fixed64::FromInt(3);
+    TEST_EXPECT_EQ(scaled.X.ToInt(), (int64_t)3);
+    TEST_EXPECT_EQ(scaled.Y.ToInt(), (int64_t)6);
+    TEST_EXPECT_EQ(scaled.Z.ToInt(), (int64_t)9);
+    return 0;
+}
+
+TEST_CASE(FixedVec3_Dot) {
+    using namespace edge26;
+    FixedVec3 a{Fixed64::FromInt(1), Fixed64::FromInt(2), Fixed64::FromInt(3)};
+    FixedVec3 b{Fixed64::FromInt(4), Fixed64::FromInt(-5), Fixed64::FromInt(6)};
+    TEST_EXPECT_EQ(Dot(a, b).ToInt(), (int64_t)12);
+    return 0;
+}
+
 int RunMathTests() {
     TEST_RUN(Fixed64_FromInt_RoundTrip);
     TEST_RUN(Fixed64_Add);
@@ -92,5 +117,7 @@ int RunMathTests() {
     TEST_RUN(Fixed64_Divide);
     TEST_RUN(Fixed64_Helpers);
     TEST_RUN(Fixed32_Basics);
+    TEST_RUN(FixedVec3_AddScale);
+    TEST_RUN(FixedVec3_Dot);
     return 0;
 }
