@@ -45,6 +45,41 @@ extern void StepBall(FSimBallState& b);
 extern void MaybeApplyKick(FSimBallState& b, FSimPlayerState& p, const FInputFrame& frame,
                            const FSimWorldState& state, int playerIdx);
 
+static void UpdatePossession(FSimWorldState& s)
+{
+    // Ball out of pitch → clear possession (no restart in v0).
+    if (Abs(s.Ball.Position.X).Raw > SimConst::PitchHalfLen.Raw ||
+        Abs(s.Ball.Position.Y).Raw > SimConst::PitchHalfWid.Raw)
+    {
+        s.Match.PossessionTeam   = 0xFF;
+        s.Match.PossessionPlayer = 0xFF;
+        return;
+    }
+
+    // Nearest outfield player within pickup radius gains possession.
+    const Fixed64 kPickupRadius = Fixed64::FromInt(80);   // 80 cm
+    const Fixed64 kPickupRSq    = kPickupRadius * kPickupRadius;
+    int   bestIdx = -1;
+    Fixed64 bestSq = kPickupRSq;
+    // Clamp deltas before squaring to prevent overflow (same pattern as EvaluateOffBall).
+    constexpr int64_t kMaxDelta = (int64_t)15000 << 32;  // 15000 cm in Q32.32
+    for (int i = 0; i < kSimPlayerCount; ++i) {
+        const auto& p = s.Players[i];
+        Fixed64 dx = p.Position.X - s.Ball.Position.X;
+        Fixed64 dy = p.Position.Y - s.Ball.Position.Y;
+        if (dx.Raw >  kMaxDelta) dx.Raw =  kMaxDelta;
+        if (dx.Raw < -kMaxDelta) dx.Raw = -kMaxDelta;
+        if (dy.Raw >  kMaxDelta) dy.Raw =  kMaxDelta;
+        if (dy.Raw < -kMaxDelta) dy.Raw = -kMaxDelta;
+        Fixed64 dSq = dx * dx + dy * dy;
+        if (dSq.Raw < bestSq.Raw) { bestSq = dSq; bestIdx = i; }
+    }
+    if (bestIdx >= 0) {
+        s.Match.PossessionPlayer = (uint8_t)bestIdx;
+        s.Match.PossessionTeam   = s.Players[bestIdx].TeamId;
+    }
+}
+
 void SimWorld::Step(const FInputFrame& frame) {
     State.TickNumber = frame.TickNumber;
 
@@ -66,6 +101,7 @@ void SimWorld::Step(const FInputFrame& frame) {
     for (int i = 0; i < kSimPlayerCount; ++i) {
         MaybeApplyKick(State.Ball, State.Players[i], frame, State, i);
     }
+    UpdatePossession(State);                 // M4 T4.4
     StepBall(State.Ball);
 }
 

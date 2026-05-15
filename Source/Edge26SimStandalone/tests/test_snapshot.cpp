@@ -482,6 +482,28 @@ TEST_CASE(Sim_22PlayerTickStable) {
     return 0;
 }
 
+TEST_CASE(Sim_PossessionFlipsOnPickup) {
+    using namespace edge26;
+    SimWorld w{1};
+    auto& st = w.MutableState();
+    st.Match.PossessionTeam   = 0xFF;
+    st.Match.PossessionPlayer = 0xFF;
+    st.Match.HumanControlledIndex = 0xFF;
+    // Park player 1 (home) on the ball; everyone else far away.
+    for (int i = 0; i < kSimPlayerCount; ++i)
+        st.Players[i].Position = FixedVec3{ Fixed64::FromInt(99999), Fixed64::FromInt(99999), Fixed64::FromInt(0) };
+    st.Players[1].Position = FixedVec3{ Fixed64::FromInt(0), Fixed64::FromInt(0), Fixed64::FromInt(0) };
+    st.Ball.Position       = st.Players[1].Position;
+    st.Ball.Velocity       = FixedVec3::Zero();
+
+    FInputFrame f{};
+    f.TickNumber = 1;
+    w.Step(f);
+    TEST_EXPECT_EQ(st.Match.PossessionPlayer, (uint8_t)1);
+    TEST_EXPECT_EQ(st.Match.PossessionTeam,   (uint8_t)0);
+    return 0;
+}
+
 TEST_CASE(Sim_AICarrierFiresPass) {
     using namespace edge26;
     SimWorld w{1};
@@ -535,6 +557,7 @@ int RunSnapshotTests() {
     TEST_RUN(SpatialModel_PassReceptionForwardOfBall);
     TEST_RUN(SpatialModel_StepUpdatesFields);
     TEST_RUN(Sim_22PlayerTickStable);
+    TEST_RUN(Sim_PossessionFlipsOnPickup);
     TEST_RUN(Sim_AICarrierFiresPass);
     return 0;
 }
