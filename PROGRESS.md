@@ -2,30 +2,26 @@
 
 ## Current status
 
-**Phase 1: Sim Core v0 is COMPLETE and verified in PIE.** All seven
-milestones (M1–M7) shipped: fixed-point math library (Q32.32 / Q16.16
-with trig, sqrt, atan2, rng, xxhash), POD sim state structs with
-explicit padding, SimWorld tick (kinematic player + simple ball
-physics + kick impulses), snapshot/restore/hash with rollback round-
-trip, headless replay binary with 3 input streams and per-tick hash
-baselines, local + GitHub Actions determinism gate, UE5 visual-shell
-adapter with SimHostSubsystem driving interpolated transforms,
-rewritten RUNBOOK.
+**Phase 1: Sim Core v0 is COMPLETE and merged.** All seven milestones
+(M1–M7) shipped: fixed-point math library (Q32.32 / Q16.16 with trig,
+sqrt, atan2, rng, xxhash), POD sim state structs with explicit padding,
+SimWorld tick (kinematic player + simple ball physics + kick impulses),
+snapshot/restore/hash with rollback round-trip, headless replay binary
+with 3 input streams and per-tick hash baselines, local + GitHub Actions
+determinism gate, UE5 visual-shell adapter with SimHostSubsystem driving
+interpolated transforms, rewritten RUNBOOK. Automated acceptance criteria
+(spec §14 #1–#4, #6–#8) all pass; PIE acceptance (§14 #5) confirmed
+working end-to-end.
 
-Automated acceptance criteria (spec §14 #1–#4, #6–#8) all pass.
-**PIE acceptance (§14 #5) confirmed working:** WASD moves the
-mannequin through the full input → IMC → sim → render-interpolation
-chain. **One remaining user manual step:** pushing the branch to
-verify the GitHub Actions determinism matrix runs green on
-Linux/macOS/Windows (spec §14 #1 cross-platform).
-
-The repo now has a deterministic 50Hz simulation core ready for Phase 2
-(spatial AI), Phase 3 (motion matching, render-side only per §3), or
-Phase 4 (rollback netcode).
+**Phase 2 (Spatial AI) is now starting** on branch
+`feat/phase2-spatial-ai`. First milestone is M1 — roster expansion to 22
+players with roles, formations, and kickoff placement. Spec:
+`docs/superpowers/specs/2026-05-15-phase2-spatial-ai-design.md`. Plan:
+`docs/superpowers/plans/2026-05-15-phase2-spatial-ai-plan.md`.
 
 ## Roadmap
 
-### Phase 1: Deterministic Sim Core v0  ←  current
+### Phase 1: Deterministic Sim Core v0  ←  complete
 - [x] M0. Module scaffolding (Build.cs, uproject, CMake, PROGRESS.md, lint script)
 - [x] M1. Fixed-point math library (`Fixed64`, `Fixed32`, `FixedVec3`, trig, sqrt, RNG, hash)
 - [x] M2. SimWorld tick loop + InputFrame + SimBall/SimPlayer state structs
@@ -35,7 +31,20 @@ Phase 4 (rollback netcode).
 - [x] M6. UE5 adapter (SimHost subsystem, AFootballerVisual, ASoccerBallVisual, BP re-parent)
 - [x] M7. RUNBOOK rewrite + final acceptance pass (PIE test + CI push remain as user manual steps)
 
-### Phase 2: Spatial Value Model + 22-player AI  (placeholder)
+### Phase 2: Spatial Value Model + 22-player AI  ←  current
+- [ ] M1. Roster expansion: 22 players, roles, formations, kickoff placement
+- [ ] M2. Spatial Value Model (5 fields × 1768 cells)
+- [ ] M3. Layer C off-ball intents
+- [ ] M4. Layer C on-ball decisions
+- [ ] M5. Layer B unit coordination (defensive line, press, overlap)
+- [ ] M6. Layer A team strategy (mentality, late-game adjustments)
+- [ ] M7. Offside enforcement
+- [ ] M8. Simple goalkeeper AI
+- [ ] M9. Player switching (auto + manual + camera)
+- [ ] M10. AI debug overlay (heatmaps + intent arrows)
+- [ ] M11. CI baselines for 22-player streams
+- [ ] M12. AI tuning pass + final acceptance
+
 ### Phase 3: Motion-matching animation + procedural ball-contact IK  (placeholder; render-side only per spec §3)
 ### Phase 4: Rollback netcode  (placeholder)
 ### Phase 5: Economy & compliance backend  (separate repo)
