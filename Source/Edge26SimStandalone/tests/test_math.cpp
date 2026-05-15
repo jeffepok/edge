@@ -4,6 +4,7 @@
 #include "Math/FixedAngle.h"
 #include "Math/Trig.h"
 #include "Math/Sqrt.h"
+#include "Math/Atan2.h"
 #include "TestHarness.h"
 
 using edge26::Fixed64;
@@ -171,6 +172,24 @@ TEST_CASE(Sqrt_Monotonic) {
     return 0;
 }
 
+TEST_CASE(Atan2_QuadrantAnchors) {
+    using namespace edge26;
+    TEST_EXPECT_NEAR_INT(SimMath::Atan2(Fixed64::FromInt(0),  Fixed64::FromInt(1)).Raw.Raw, 0, 32);
+    TEST_EXPECT_NEAR_INT(SimMath::Atan2(Fixed64::FromInt(1),  Fixed64::FromInt(0)).Raw.Raw,
+                         FixedAngle::PiRaw() / 2, 64);
+    // atan2(0, -1) = ±π
+    int32_t pos = SimMath::Atan2(Fixed64::FromInt(0), Fixed64::FromInt(-1)).Raw.Raw;
+    int32_t diffFromPi    = pos - FixedAngle::PiRaw();
+    int32_t diffFromNegPi = pos + FixedAngle::PiRaw();
+    int32_t minDiff = (diffFromPi < 0 ? -diffFromPi : diffFromPi);
+    int32_t altDiff = (diffFromNegPi < 0 ? -diffFromNegPi : diffFromNegPi);
+    if (altDiff < minDiff) minDiff = altDiff;
+    TEST_EXPECT_TRUE(minDiff < 64);
+    TEST_EXPECT_NEAR_INT(SimMath::Atan2(Fixed64::FromInt(-1), Fixed64::FromInt(0)).Raw.Raw,
+                         -FixedAngle::PiRaw() / 2, 64);
+    return 0;
+}
+
 int RunMathTests() {
     TEST_RUN(Fixed64_FromInt_RoundTrip);
     TEST_RUN(Fixed64_Add);
@@ -187,5 +206,6 @@ int RunMathTests() {
     TEST_RUN(Trig_SinCos_AnchorValues);
     TEST_RUN(Sqrt_AnchorValues);
     TEST_RUN(Sqrt_Monotonic);
+    TEST_RUN(Atan2_QuadrantAnchors);
     return 0;
 }
