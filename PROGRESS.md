@@ -2,14 +2,15 @@
 
 ## Current status
 
-We are in **Phase 1: Sim Core v0**, milestone **M6 of M7** (UE5 adapter).
-M5 is complete: `Scripts/check_determinism.sh` runs lint + standalone
-build + self-test + replay-vs-baseline + rollback round-trip and prints
-"PASS: all determinism checks" in ~5s. `update_determinism_baseline.sh`
-verified idempotent (no diff when behavior unchanged). GitHub Actions
-workflow committed for linux/macos/windows matrix — first verification
-happens when this branch is pushed. Next: UE5 adapter (visual shells,
-SimHost subsystem, BP re-parent).
+We are in **Phase 1: Sim Core v0**, milestone **M7 of M7** (RUNBOOK +
+final acceptance). M6 is complete: Edge26 module depends on Edge26Sim;
+AFootballerVisual + ASoccerBallVisual are render-only shells driven by
+SimHostSubsystem (50Hz fixed accumulator tick, render-frame interpolation);
+SimInputCollector translates Enhanced Input to FInputFrame; SimHostBootstrap
+forces subsystem init in PIE; SoccerGameMode kickoff resets go through
+the sim. All legacy classes deleted. BPs re-parented headlessly via Python.
+Editor builds clean. Next: RUNBOOK rewrite + acceptance pass (PIE test
+is a user manual step).
 
 ## Roadmap
 
@@ -20,7 +21,7 @@ SimHost subsystem, BP re-parent).
 - [x] M3. Snapshot/Restore + xxhash + RNG rollback-test
 - [x] M4. Standalone headless binary + 3 input streams + replay generator
 - [x] M5. `check_determinism.sh` + GitHub Actions workflow + baseline files
-- [ ] M6. UE5 adapter (SimHost subsystem, AFootballerVisual, ASoccerBallVisual, BP re-parent)
+- [x] M6. UE5 adapter (SimHost subsystem, AFootballerVisual, ASoccerBallVisual, BP re-parent)
 - [ ] M7. RUNBOOK rewrite + final acceptance pass
 
 ### Phase 2: Spatial Value Model + 22-player AI  (placeholder)
@@ -42,3 +43,4 @@ SimHost subsystem, BP re-parent).
 - M3 landed: Snapshot/Restore/HashState. Rollback_FullRoundTrip green (advance 50, snap, burn 40 divergent ticks, restore, advance 50 correct → hash matches single-run baseline). Per-tick hash stability test confirms no hidden state. xxhash64 over 224 bytes = ~30ns/tick.
 - M4 landed: edge26_sim_replay CLI + replay_generator + 3 binary input streams (basic 500t / ball_only 1000t / rollback_torture 2000t) + matching expected.hashes baselines (3500 lines committed). Rollback-test mode walks the torture stream successfully.
 - M5 landed: check_determinism.sh (lint + build + self-test + replay-vs-baseline + rollback round-trip, ~5s), update_determinism_baseline.sh (idempotent), GitHub Actions matrix for linux/macos/windows. CI runs the gate on push to main and on every PR.
+- M6 landed: full UE5 adapter. New classes — AFootballerVisual (APawn, no CMC, transform driven by sim), ASoccerBallVisual (AActor, no physics), USimHostSubsystem (50Hz fixed accumulator + render-frame interp + ResetBall/ResetPlayer), USimInputCollector (Enhanced Input → InputFrame), ASimHostBootstrap. SoccerGameMode + SoccerHUD + GoalTrigger rewired to new classes. 10 legacy source files deleted (FootballerCharacter, FootballerAnimInstance, SoccerBall, OpponentFootballerCharacter, OpponentAIController). Three plan/UE5 quirks caught & fixed inline: UE5 module needed Private/UE5/Edge26SimModule.cpp with IMPLEMENT_MODULE; macOS linker stripped Edge26Sim symbols without EDGE26SIM_API annotation (added fallback header); -Werror,-Wshadow caught a Ball local shadowing the member field. BPs re-parented via headless Python commandlet (-nullrhi). PIE acceptance is the remaining user step.
