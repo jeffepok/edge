@@ -1,9 +1,11 @@
 #include "Sim/WorldState.h"
 #include "Sim/SimWorld.h"
 #include "Sim/Constants.h"
+#include "Sim/InputFrame.h"
 #include "AI/Formations.h"
 #include "AI/Roles.h"
 #include "AI/SpatialValueModel.h"
+#include "AI/Switching.h"
 #include "TestHarness.h"
 #include <cstring>
 
@@ -633,6 +635,34 @@ TEST_CASE(Sim_GKSavesIncomingShot) {
     return 0;
 }
 
+TEST_CASE(Sim_ChooseHumanControlled_Carrier) {
+    using namespace edge26;
+    SimWorld w{1};
+    auto& st = w.MutableState();
+    st.Match.PossessionTeam   = 0;
+    st.Match.PossessionPlayer = 7;
+    TEST_EXPECT_EQ(ChooseHumanControlled(st, 0), 7);
+    return 0;
+}
+
+TEST_CASE(Sim_ChooseHumanControlled_NoPossession_PicksNearest) {
+    using namespace edge26;
+    SimWorld w{1};
+    auto& st = w.MutableState();
+    st.Match.PossessionTeam = 0xFF;
+    st.Match.PossessionPlayer = 0xFF;
+    // Default constructed positions are zero; pick a deterministic spot
+    // and put one home outfielder near the ball.
+    for (int i = 0; i < kSimPlayerCount; ++i)
+        st.Players[i].Position = FixedVec3{ Fixed64::FromInt(99999), Fixed64::FromInt(99999), Fixed64::FromInt(0) };
+    st.Players[3].TeamId = 0;
+    st.Players[3].RoleId = (uint8_t)ERole::CM;
+    st.Players[3].Position = FixedVec3{ Fixed64::FromInt(100), Fixed64::FromInt(0), Fixed64::FromInt(0) };
+    st.Ball.Position = FixedVec3{ Fixed64::FromInt(0), Fixed64::FromInt(0), Fixed64::FromInt(0) };
+    TEST_EXPECT_EQ(ChooseHumanControlled(st, 0), 3);
+    return 0;
+}
+
 int RunSnapshotTests() {
     TEST_RUN(WorldState_Sizes);
     TEST_RUN(WorldState_Aligned);
@@ -665,5 +695,7 @@ int RunSnapshotTests() {
     TEST_RUN(AI_LateGameMentalityShift);
     TEST_RUN(Sim_OffsideFlagAndResolve);
     TEST_RUN(Sim_GKSavesIncomingShot);
+    TEST_RUN(Sim_ChooseHumanControlled_Carrier);
+    TEST_RUN(Sim_ChooseHumanControlled_NoPossession_PicksNearest);
     return 0;
 }
