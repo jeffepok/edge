@@ -21,6 +21,7 @@ SimWorld::SimWorld(uint64_t rngSeed) {
     State.Match.PossessionTeam          = 0xFF;
     State.Match.PossessionPlayer        = 0xFF;
     State.Match.PendingOffsideCallTeam  = 0xFF;
+    State.Match.HumanControlledIndex    = 0;    // will be reset by host
 
     // Initialize each player's TeamId / RoleId / slot world position based on
     // the 4-3-3 formation. Players 0..10 = home; players 11..21 = away.
@@ -46,6 +47,53 @@ extern void StepPlayer(FSimPlayerState& p, const FInputFrame& frame);
 extern void StepBall(FSimBallState& b);
 extern void MaybeApplyKick(FSimBallState& b, FSimPlayerState& p, const FInputFrame& frame,
                            FSimWorldState& state, int playerIdx);
+
+static void ResolveOffsideCall(FSimWorldState& s)
+{
+    if (s.Match.PendingOffsideCallTeam == 0xFF) return;
+
+    const uint8_t attackingTeam = s.Match.PendingOffsideCallTeam;
+    const uint32_t startedTick  = s.Match.PendingOffsideCallTick;
+    const uint32_t graceTicks   = 30;   // 0.6 s
+
+    // Resolution trigger 1: grace expired.
+    bool expired  = (s.TickNumber >= startedTick + graceTicks);
+    // Resolution trigger 2: the attacking team controls the ball (receiver picked it up).
+    bool received = (s.Match.PossessionTeam == attackingTeam);
+
+    if (expired || received) {
+        // Award possession to the defending team.
+        s.Match.PossessionTeam = (uint8_t)(1 - attackingTeam);
+        // Find nearest defending-team outfielder to the ball.
+        int     bestIdx = 0xFF;
+        // Clamp deltas before squaring to prevent overflow (15000 cm per axis cap).
+        constexpr int64_t kMaxDelta = (int64_t)15000 << 32;
+        Fixed64 bestSq = Fixed64::FromInt(99999999);
+        for (int i = 0; i < kSimPlayerCount; ++i) {
+            const auto& p = s.Players[i];
+            if (p.TeamId != (uint8_t)(1 - attackingTeam)) continue;
+            if (p.RoleId == (uint8_t)ERole::GK) continue;
+            Fixed64 dx = p.Position.X - s.Ball.Position.X;
+            Fixed64 dy = p.Position.Y - s.Ball.Position.Y;
+            if (dx.Raw >  kMaxDelta) dx.Raw =  kMaxDelta;
+            if (dx.Raw < -kMaxDelta) dx.Raw = -kMaxDelta;
+            if (dy.Raw >  kMaxDelta) dy.Raw =  kMaxDelta;
+            if (dy.Raw < -kMaxDelta) dy.Raw = -kMaxDelta;
+            Fixed64 dSq = dx * dx + dy * dy;
+            if (dSq.Raw < bestSq.Raw) { bestSq = dSq; bestIdx = i; }
+        }
+        s.Match.PossessionPlayer = (uint8_t)bestIdx;
+        // Stop the ball (no set-piece restart in v0; just give it to defender).
+        s.Ball.Velocity        = FixedVec3::Zero();
+        s.Ball.AngularVelocity = FixedVec3::Zero();
+        if (bestIdx != 0xFF) {
+            s.Ball.Position = s.Players[bestIdx].Position;
+        }
+        // Clear the flag.
+        s.Match.PendingOffsideCallTeam = 0xFF;
+        s.Match.PendingOffsideCallTick = 0;
+    }
+}
 
 static void UpdatePossession(FSimWorldState& s)
 {
@@ -115,6 +163,7 @@ void SimWorld::Step(const FInputFrame& frame) {
     for (int i = 0; i < kSimPlayerCount; ++i) {
         MaybeApplyKick(State.Ball, State.Players[i], frame, State, i);
     }
+    ResolveOffsideCall(State);               // M7 T7.2 — before possession update
     UpdatePossession(State);                 // M4 T4.4
     StepBall(State.Ball);
 }
