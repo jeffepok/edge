@@ -2,13 +2,14 @@
 
 ## Current status
 
-We are in **Phase 1: Sim Core v0**, milestone **M5 of M7** (CI gate).
-M4 is complete: `edge26_sim_replay` CLI (--self-test, --input, --hash-every,
---seed, --rollback-test) + `replay_generator` (DSL → binary streams) +
-three checked-in inputs (basic 500 ticks, ball_only 1000 ticks,
-rollback_torture 2000 ticks) + matching `.expected.hashes` baselines
-(3500 lines total). Rollback round-trip green on torture stream. Next:
-check_determinism.sh + GitHub Actions 3-OS matrix.
+We are in **Phase 1: Sim Core v0**, milestone **M6 of M7** (UE5 adapter).
+M5 is complete: `Scripts/check_determinism.sh` runs lint + standalone
+build + self-test + replay-vs-baseline + rollback round-trip and prints
+"PASS: all determinism checks" in ~5s. `update_determinism_baseline.sh`
+verified idempotent (no diff when behavior unchanged). GitHub Actions
+workflow committed for linux/macos/windows matrix — first verification
+happens when this branch is pushed. Next: UE5 adapter (visual shells,
+SimHost subsystem, BP re-parent).
 
 ## Roadmap
 
@@ -18,7 +19,7 @@ check_determinism.sh + GitHub Actions 3-OS matrix.
 - [x] M2. SimWorld tick loop + InputFrame + SimBall/SimPlayer state structs
 - [x] M3. Snapshot/Restore + xxhash + RNG rollback-test
 - [x] M4. Standalone headless binary + 3 input streams + replay generator
-- [ ] M5. `check_determinism.sh` + GitHub Actions workflow + baseline files
+- [x] M5. `check_determinism.sh` + GitHub Actions workflow + baseline files
 - [ ] M6. UE5 adapter (SimHost subsystem, AFootballerVisual, ASoccerBallVisual, BP re-parent)
 - [ ] M7. RUNBOOK rewrite + final acceptance pass
 
@@ -40,3 +41,4 @@ check_determinism.sh + GitHub Actions 3-OS matrix.
 - M2 landed: POD state structs (12+80+64+224 B) with explicit padding, SimWorld with zero-init ctor, StepPlayer kinematic, StepBall (physics-grounded settle criterion — avoided limit cycle), MaybeApplyKick. Byte-identical determinism across two-run check passes. Fixed two plan oversights inline: FInputFrame is 12 bytes not 16 (uint32 alignment), ball settle needed post-bounce-vs-gravity check not just a velocity threshold.
 - M3 landed: Snapshot/Restore/HashState. Rollback_FullRoundTrip green (advance 50, snap, burn 40 divergent ticks, restore, advance 50 correct → hash matches single-run baseline). Per-tick hash stability test confirms no hidden state. xxhash64 over 224 bytes = ~30ns/tick.
 - M4 landed: edge26_sim_replay CLI + replay_generator + 3 binary input streams (basic 500t / ball_only 1000t / rollback_torture 2000t) + matching expected.hashes baselines (3500 lines committed). Rollback-test mode walks the torture stream successfully.
+- M5 landed: check_determinism.sh (lint + build + self-test + replay-vs-baseline + rollback round-trip, ~5s), update_determinism_baseline.sh (idempotent), GitHub Actions matrix for linux/macos/windows. CI runs the gate on push to main and on every PR.
