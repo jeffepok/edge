@@ -4,6 +4,7 @@
 #include "Math/Hash.h"
 #include "AI/Formations.h"
 #include "AI/Roles.h"
+#include "AI/SpatialValueModel.h"
 #include <cstring>
 
 namespace edge26 {
@@ -12,6 +13,11 @@ SimWorld::SimWorld(uint64_t rngSeed) {
     // Required §4: zero-init the entire state including explicit padding.
     std::memset(&State, 0, sizeof(State));
     State.RngState = (rngSeed != 0) ? rngSeed : 0xDEADBEEFCAFEBABEull;
+
+    // 0xFF = "no possession / no offside call" sentinel (cannot be 0 from memset).
+    State.Match.PossessionTeam          = 0xFF;
+    State.Match.PossessionPlayer        = 0xFF;
+    State.Match.PendingOffsideCallTeam  = 0xFF;
 
     // Initialize each player's TeamId / RoleId / slot world position based on
     // the 4-3-3 formation. Players 0..10 = home; players 11..21 = away.

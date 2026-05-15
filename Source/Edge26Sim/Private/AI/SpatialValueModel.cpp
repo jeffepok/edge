@@ -176,4 +176,44 @@ void UpdateThreatField(FSimWorldState& s, int teamId) {
     }
 }
 
+// T2.6 — Composite pass-reception quality field.
+// Reads Space + LaneOccupancy + Threat (which must already be filled).
+// Applies a forward bonus: cells ahead of the ball (in attacking direction) score higher.
+void UpdatePassReceptionField(FSimWorldState& s, int teamId) {
+    auto& field            = s.Spatial.Cells[teamId][(int)ESpatialField::PassReception];
+    const auto& spaceField = s.Spatial.Cells[teamId][(int)ESpatialField::Space];
+    const auto& laneField  = s.Spatial.Cells[teamId][(int)ESpatialField::LaneOccupancy];
+    const auto& threatField = s.Spatial.Cells[teamId][(int)ESpatialField::Threat];
+
+    // "Forward" sign: home attacks +X (sign=+1); away attacks -X (sign=-1).
+    Fixed64 forwardSign = (teamId == 0) ? Fixed64::FromInt(1) : Fixed64::FromInt(-1);
+    Fixed64 ballX       = s.Ball.Position.X;
+
+    for (int c = 0; c < kPitchCells; ++c) {
+        Fixed32 space   = spaceField[c];
+        Fixed32 lane    = laneField[c];
+        Fixed32 threat  = threatField[c];
+
+        // Forward bonus: cells ahead of the ball score higher.
+        Fixed64 cellX = CellCenter(c).X;
+        Fixed64 forwardDelta = (cellX - ballX) * forwardSign;
+        // Normalize forwardDelta over half a pitch:
+        // forwardBonus = clamp(forwardDelta / PitchHalfLen, 0, 1)
+        Fixed32 forwardBonus;
+        if (forwardDelta.Raw > 0) {
+            int32_t raw = (int32_t)((forwardDelta.Raw * (int64_t)Fixed32::One)
+                                    / SimConst::PitchHalfLen.Raw);
+            forwardBonus = Fixed32::FromRaw(raw);
+            if (forwardBonus.Raw > Fixed32::One) forwardBonus = Fixed32::FromRaw(Fixed32::One);
+        } else {
+            forwardBonus = Fixed32::FromRaw(0);
+        }
+
+        // Composite: space × lane × (1 + forwardBonus) × (1 + threat)
+        Fixed32 oneF32 = Fixed32::FromRaw(Fixed32::One);
+        Fixed32 value = space * lane * (oneF32 + forwardBonus) * (oneF32 + threat);
+        field[c] = value;
+    }
+}
+
 }  // namespace edge26

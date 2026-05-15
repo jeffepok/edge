@@ -71,5 +71,6 @@ void UpdateSpaceField(FSimWorldState& s, int teamId);
 void UpdateDefCoverageField(FSimWorldState& s, int teamId);
 void UpdateLaneOccupancyField(FSimWorldState& s);
 void UpdateThreatField(FSimWorldState& s, int teamId);
+void UpdatePassReceptionField(FSimWorldState& s, int teamId);  // T2.6
 
 }  // namespace edge26

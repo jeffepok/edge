@@ -14,6 +14,7 @@ namespace edge26 {
     void UpdateDefCoverageField(FSimWorldState& s, int teamId);
     void UpdateLaneOccupancyField(FSimWorldState& s);
     void UpdateThreatField(FSimWorldState& s, int teamId);
+    void UpdatePassReceptionField(FSimWorldState& s, int teamId);  // T2.6
 }
 
 using namespace edge26;
@@ -396,6 +397,33 @@ TEST_CASE(SpatialModel_LaneOccupancyEmptyPitchAllClear) {
     return 0;
 }
 
+// ----- T2.6: UpdatePassReceptionField -----
+
+TEST_CASE(SpatialModel_PassReceptionForwardOfBall) {
+    using namespace edge26;
+    SimWorld w{1};
+    auto& state = w.MutableState();
+    state.Ball.Position = FixedVec3::Zero();
+    // Move opponents far away so Space + Lane are clear.
+    for (int i = 11; i < kSimPlayerCount; ++i) {
+        state.Players[i].Position = FixedVec3{
+            Fixed64::FromInt(99999), Fixed64::FromInt(99999), Fixed64::FromInt(0)
+        };
+    }
+    UpdateSpaceField(state, 0);
+    UpdateLaneOccupancyField(state);
+    UpdateThreatField(state, 0);
+    UpdatePassReceptionField(state, 0);
+
+    // Cell at +3000 X (ahead of ball for home) should score higher than -3000.
+    int aheadCell  = CellIndex(FixedVec3{Fixed64::FromInt(3000), Fixed64::FromInt(0), Fixed64::FromInt(0)});
+    int behindCell = CellIndex(FixedVec3{Fixed64::FromInt(-3000), Fixed64::FromInt(0), Fixed64::FromInt(0)});
+    Fixed32 ahead  = state.Spatial.Cells[0][(int)ESpatialField::PassReception][aheadCell];
+    Fixed32 behind = state.Spatial.Cells[0][(int)ESpatialField::PassReception][behindCell];
+    TEST_EXPECT_TRUE(ahead.Raw > behind.Raw);
+    return 0;
+}
+
 // ----- T2.3: UpdateDefCoverageField -----
 
 TEST_CASE(SpatialModel_DefCoverageHighWhereTeammatesScarce) {
@@ -442,5 +470,6 @@ int RunSnapshotTests() {
     TEST_RUN(SpatialModel_DefCoverageHighWhereTeammatesScarce);
     TEST_RUN(SpatialModel_LaneOccupancyEmptyPitchAllClear);
     TEST_RUN(SpatialModel_ThreatHighInOppBox);
+    TEST_RUN(SpatialModel_PassReceptionForwardOfBall);
     return 0;
 }
