@@ -2,13 +2,13 @@
 
 ## Current status
 
-We are in **Phase 1: Sim Core v0**, milestone **M4 of M7** (headless
-replay binary). M3 is complete: SimWorld::Snapshot/Restore are POD
-copies; HashState wraps xxhash64 over the whole state struct; full
-rollback round-trip (advance N → snapshot → burn divergent ticks →
-restore → advance N correct → hash matches first run) is green; per-tick
-hash stability across two identical runs verified. 30 tests passing.
-Next: standalone replay binary + 3 input streams + baselines.
+We are in **Phase 1: Sim Core v0**, milestone **M5 of M7** (CI gate).
+M4 is complete: `edge26_sim_replay` CLI (--self-test, --input, --hash-every,
+--seed, --rollback-test) + `replay_generator` (DSL → binary streams) +
+three checked-in inputs (basic 500 ticks, ball_only 1000 ticks,
+rollback_torture 2000 ticks) + matching `.expected.hashes` baselines
+(3500 lines total). Rollback round-trip green on torture stream. Next:
+check_determinism.sh + GitHub Actions 3-OS matrix.
 
 ## Roadmap
 
@@ -17,7 +17,7 @@ Next: standalone replay binary + 3 input streams + baselines.
 - [x] M1. Fixed-point math library (`Fixed64`, `Fixed32`, `FixedVec3`, trig, sqrt, RNG, hash)
 - [x] M2. SimWorld tick loop + InputFrame + SimBall/SimPlayer state structs
 - [x] M3. Snapshot/Restore + xxhash + RNG rollback-test
-- [ ] M4. Standalone headless binary + 3 input streams + replay generator
+- [x] M4. Standalone headless binary + 3 input streams + replay generator
 - [ ] M5. `check_determinism.sh` + GitHub Actions workflow + baseline files
 - [ ] M6. UE5 adapter (SimHost subsystem, AFootballerVisual, ASoccerBallVisual, BP re-parent)
 - [ ] M7. RUNBOOK rewrite + final acceptance pass
@@ -39,3 +39,4 @@ Next: standalone replay binary + 3 input streams + baselines.
 - M1 landed: Fixed64/Fixed32/FixedVec/FixedAngle, Sin/Cos LUT (1024 entries, lerp tolerance 128 ulps), 8-iter Newton Sqrt, 20-iter CORDIC Atan2, xorshift64 Rng, xxhash64. 18 unit tests pass in standalone; lint clean.
 - M2 landed: POD state structs (12+80+64+224 B) with explicit padding, SimWorld with zero-init ctor, StepPlayer kinematic, StepBall (physics-grounded settle criterion — avoided limit cycle), MaybeApplyKick. Byte-identical determinism across two-run check passes. Fixed two plan oversights inline: FInputFrame is 12 bytes not 16 (uint32 alignment), ball settle needed post-bounce-vs-gravity check not just a velocity threshold.
 - M3 landed: Snapshot/Restore/HashState. Rollback_FullRoundTrip green (advance 50, snap, burn 40 divergent ticks, restore, advance 50 correct → hash matches single-run baseline). Per-tick hash stability test confirms no hidden state. xxhash64 over 224 bytes = ~30ns/tick.
+- M4 landed: edge26_sim_replay CLI + replay_generator + 3 binary input streams (basic 500t / ball_only 1000t / rollback_torture 2000t) + matching expected.hashes baselines (3500 lines committed). Rollback-test mode walks the torture stream successfully.
