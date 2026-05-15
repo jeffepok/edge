@@ -6,6 +6,7 @@
 #include "Math/Sqrt.h"
 #include "Math/Atan2.h"
 #include "Math/Rng.h"
+#include "Math/Hash.h"
 #include "TestHarness.h"
 
 using edge26::Fixed64;
@@ -209,6 +210,24 @@ TEST_CASE(Rng_DistinctSeedsDistinctSequences) {
     return 0;
 }
 
+TEST_CASE(Hash_KnownVectors) {
+    using edge26::Hash::XXH64;
+    TEST_EXPECT_EQ(XXH64(nullptr, 0, 0), 0xEF46DB3751D8E999ull);
+    const uint8_t a = 'a';
+    TEST_EXPECT_EQ(XXH64(&a, 1, 0), 0xD24EC4F1A98C6E5Bull);
+    return 0;
+}
+
+TEST_CASE(Hash_Deterministic) {
+    using edge26::Hash::XXH64;
+    uint8_t buf[256];
+    for (int i = 0; i < 256; ++i) buf[i] = (uint8_t)i;
+    uint64_t a = XXH64(buf, sizeof(buf), 0xC0FFEEull);
+    uint64_t b = XXH64(buf, sizeof(buf), 0xC0FFEEull);
+    TEST_EXPECT_EQ(a, b);
+    return 0;
+}
+
 int RunMathTests() {
     TEST_RUN(Fixed64_FromInt_RoundTrip);
     TEST_RUN(Fixed64_Add);
@@ -228,5 +247,7 @@ int RunMathTests() {
     TEST_RUN(Atan2_QuadrantAnchors);
     TEST_RUN(Rng_DeterministicSequence);
     TEST_RUN(Rng_DistinctSeedsDistinctSequences);
+    TEST_RUN(Hash_KnownVectors);
+    TEST_RUN(Hash_Deterministic);
     return 0;
 }
