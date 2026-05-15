@@ -25,8 +25,11 @@ file(GLOB_RECURSE SIM_SOURCES
     ${SIM_ROOT}/Private/*.cpp
 )
 
+file(GLOB TEST_SOURCES tests/*.cpp)
+
 add_executable(edge26_sim_replay
     main.cpp
+    ${TEST_SOURCES}
     ${SIM_HEADERS}
     ${SIM_SOURCES}
 )
