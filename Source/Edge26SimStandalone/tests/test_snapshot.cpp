@@ -350,6 +350,28 @@ TEST_CASE(SpatialModel_CellIndexClampsOutOfBounds) {
     return 0;
 }
 
+// ----- T2.5: UpdateThreatField -----
+
+TEST_CASE(SpatialModel_ThreatHighInOppBox) {
+    using namespace edge26;
+    SimWorld w{1};
+    auto& state = w.MutableState();
+    UpdateThreatField(state, 0);  // home attacks +X
+    // Home's threat at +5000, 0 (deep in opp box) should be near max.
+    int boxCell = CellIndex(FixedVec3{
+        Fixed64::FromInt(5000), Fixed64::FromInt(0), Fixed64::FromInt(0)
+    });
+    Fixed32 v = state.Spatial.Cells[0][(int)ESpatialField::Threat][boxCell];
+    TEST_EXPECT_TRUE(v.Raw > (Fixed32::One * 4 / 5));  // > 0.8
+    // Home's threat at -5000, 0 (own box) should be ~zero.
+    int ownBox = CellIndex(FixedVec3{
+        Fixed64::FromInt(-5000), Fixed64::FromInt(0), Fixed64::FromInt(0)
+    });
+    Fixed32 v2 = state.Spatial.Cells[0][(int)ESpatialField::Threat][ownBox];
+    TEST_EXPECT_EQ(v2.Raw, (int32_t)0);
+    return 0;
+}
+
 // ----- T2.4: UpdateLaneOccupancyField -----
 
 TEST_CASE(SpatialModel_LaneOccupancyEmptyPitchAllClear) {
@@ -419,5 +441,6 @@ int RunSnapshotTests() {
     TEST_RUN(SpatialModel_CellIndexClampsOutOfBounds);
     TEST_RUN(SpatialModel_DefCoverageHighWhereTeammatesScarce);
     TEST_RUN(SpatialModel_LaneOccupancyEmptyPitchAllClear);
+    TEST_RUN(SpatialModel_ThreatHighInOppBox);
     return 0;
 }

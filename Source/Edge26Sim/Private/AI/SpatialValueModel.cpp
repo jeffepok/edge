@@ -138,4 +138,42 @@ void UpdateLaneOccupancyField(FSimWorldState& s) {
     }
 }
 
+// Static xG-like threat by cell, per attacking team.
+// Encoded as a function of normalized X (-1 own goal, +1 opp goal) and |Y|.
+// Higher = more dangerous to attack TO this cell.
+// Pre-computed Fixed32 raw values (Fixed32::One = 65536):
+//   0.95 * 65536 = 62259,  0.65 * 65536 = 42598
+//   0.40 * 65536 = 26214,  0.25 * 65536 = 16384,  0.10 * 65536 = 6553
+static constexpr int32_t kThreat95 = 62259;
+static constexpr int32_t kThreat65 = 42598;
+static constexpr int32_t kThreat40 = 26214;
+static constexpr int32_t kThreat25 = 16384;
+static constexpr int32_t kThreat10 = 6553;
+
+static Fixed32 StaticThreatAt(FixedVec3 cellPos, int attackingTeam) {
+    // Attacking direction: home (team 0) attacks +X; away (team 1) attacks -X.
+    int64_t signedX_cm = (attackingTeam == 0) ? cellPos.X.ToInt() : -cellPos.X.ToInt();
+    int64_t absY_cm    = (cellPos.Y.Raw >= 0) ? cellPos.Y.ToInt() : -cellPos.Y.ToInt();
+
+    // 6-yard box (≥4400 cm from pitch center toward opp goal, ±1830 cm wide) → huge threat
+    if (signedX_cm > 4400 && absY_cm < 1830) return Fixed32::FromRaw(kThreat95);
+    // 18-yard box (≥3600 cm, ±2000 cm)
+    if (signedX_cm > 3600 && absY_cm < 2000) return Fixed32::FromRaw(kThreat65);
+    // Top of D (just outside box, central)
+    if (signedX_cm > 3000 && absY_cm < 1500) return Fixed32::FromRaw(kThreat40);
+    // Half-spaces (wide of box)
+    if (signedX_cm > 3200 && absY_cm < 2800) return Fixed32::FromRaw(kThreat25);
+    // Attacking third
+    if (signedX_cm > 1750)                   return Fixed32::FromRaw(kThreat10);
+    return Fixed32::FromRaw(0);
+}
+
+void UpdateThreatField(FSimWorldState& s, int teamId) {
+    auto& field = s.Spatial.Cells[teamId][(int)ESpatialField::Threat];
+    for (int c = 0; c < kPitchCells; ++c) {
+        FixedVec3 cellPos = CellCenter(c);
+        field[c] = StaticThreatAt(cellPos, teamId);
+    }
+}
+
 }  // namespace edge26
