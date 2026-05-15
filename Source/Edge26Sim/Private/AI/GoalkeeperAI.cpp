@@ -86,8 +86,36 @@ void UpdateGoalkeeperAI(FSimPlayerState& gk, const FSimWorldState& s, int gkIdx)
     (void)gkIdx;
 }
 
-void MaybeGoalkeeperSave(FSimBallState&, FSimWorldState&) {
-    // Fleshed out in T8.3.
+static bool BallMovingTowardGoal(const FSimBallState& b, int gkTeam) {
+    // Home GK (team 0) defends -X end: ball moving toward home goal = ball.Velocity.X < 0.
+    // Away GK (team 1) defends +X end: ball moving toward away goal = ball.Velocity.X > 0.
+    // sign = +1 for team 0, -1 for team 1.
+    Fixed64 sign = (gkTeam == 0) ? Fixed64::FromInt(1) : Fixed64::FromInt(-1);
+    return (b.Velocity.X * (-sign)).Raw > 0;
+}
+
+void MaybeGoalkeeperSave(FSimBallState& b, FSimWorldState& s)
+{
+    for (int t = 0; t < 2; ++t) {
+        int gkIdx = FindGoalkeeper(s, t);
+        if (gkIdx < 0) continue;
+        const FSimPlayerState& gk = s.Players[gkIdx];
+
+        FixedVec3 toBall = b.Position - gk.Position;
+        Fixed64 dist = SimMath::Sqrt(toBall.X * toBall.X + toBall.Y * toBall.Y);
+        if (dist.Raw > SimConst::kGKReachRadius.Raw) continue;
+        if (!BallMovingTowardGoal(b, t)) continue;
+
+        // Save: zero ball velocity, GK gains possession.
+        b.Velocity        = FixedVec3::Zero();
+        b.AngularVelocity = FixedVec3::Zero();
+        b.Position        = gk.Position + FixedVec3{
+            Fixed64::FromInt(20), Fixed64::FromInt(0), Fixed64::FromInt(50)
+        };
+        s.Match.PossessionTeam   = (uint8_t)t;
+        s.Match.PossessionPlayer = (uint8_t)gkIdx;
+        return;     // first save in linear order wins (deterministic).
+    }
 }
 
 }  // namespace edge26
