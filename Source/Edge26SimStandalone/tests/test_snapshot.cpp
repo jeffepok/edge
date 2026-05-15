@@ -7,6 +7,10 @@
 #include "TestHarness.h"
 #include <cstring>
 
+namespace edge26 {
+    void UpdateSpaceField(FSimWorldState& s, int teamId);
+}
+
 using namespace edge26;
 
 TEST_CASE(WorldState_Sizes) {
@@ -277,6 +281,43 @@ TEST_CASE(World_22StationaryPlayersStable) {
     return 0;
 }
 
+// ----- T2.2: UpdateSpaceField -----
+
+TEST_CASE(SpatialModel_SpaceFieldEmptyPitchIsFullyOpen) {
+    using namespace edge26;
+    SimWorld w{1};
+    // Remove all opponents (team 1) by moving them off-pitch far away.
+    auto& state = w.MutableState();
+    for (int i = 11; i < kSimPlayerCount; ++i) {
+        state.Players[i].Position = FixedVec3{
+            Fixed64::FromInt(99999), Fixed64::FromInt(99999), Fixed64::FromInt(0)
+        };
+    }
+    UpdateSpaceField(state, 0);  // home team perspective
+    // Every cell should be max openness (no nearby opponents).
+    for (int c = 0; c < kPitchCells; ++c) {
+        Fixed32 v = state.Spatial.Cells[0][(int)ESpatialField::Space][c];
+        // Allow ±2 ulps tolerance for sqrt rounding
+        TEST_EXPECT_TRUE(v.Raw >= (Fixed32::One - 2));
+    }
+    return 0;
+}
+
+TEST_CASE(SpatialModel_SpaceFieldZeroAtOpponent) {
+    using namespace edge26;
+    SimWorld w{1};
+    auto& state = w.MutableState();
+    // Place opponent (player 11, away team) at the center of the origin cell,
+    // so that cell's distance to the opponent is exactly 0.
+    int originCell = CellIndex(FixedVec3::Zero());
+    state.Players[11].Position = CellCenter(originCell);
+    UpdateSpaceField(state, 0);
+    Fixed32 v = state.Spatial.Cells[0][(int)ESpatialField::Space][originCell];
+    // Cell exactly at opponent's position should have zero openness (distance = 0).
+    TEST_EXPECT_TRUE(v.Raw < (Fixed32::One / 5));  // less than 0.2 (actually 0)
+    return 0;
+}
+
 // ----- T2.1: SpatialValueModel struct + cell helpers -----
 
 TEST_CASE(SpatialModel_CellIndexRoundtrip) {
@@ -321,6 +362,8 @@ int RunSnapshotTests() {
     TEST_RUN(Formation_HomeAwaySymmetry);
     TEST_RUN(World_22PlayersAtSlots);
     TEST_RUN(World_22StationaryPlayersStable);
+    TEST_RUN(SpatialModel_SpaceFieldEmptyPitchIsFullyOpen);
+    TEST_RUN(SpatialModel_SpaceFieldZeroAtOpponent);
     TEST_RUN(SpatialModel_CellIndexRoundtrip);
     TEST_RUN(SpatialModel_CellIndexClampsOutOfBounds);
     return 0;
