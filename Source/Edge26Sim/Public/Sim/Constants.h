@@ -44,4 +44,14 @@ constexpr Fixed64  ShotLift        = Fixed64::FromInt(250);
 constexpr Fixed64  ChipSpeed       = Fixed64::FromInt(1200);
 constexpr Fixed64  ChipLift        = Fixed64::FromInt(700);
 
+// --- Goalkeeper AI ---
+// GK reach radius — a shot needs to clear this to score.
+constexpr Fixed64 kGKReachRadius  = Fixed64::FromInt(180);   // 1.8m
+// Half-width of goal mouth (cm).
+constexpr Fixed64 kGoalHalfWidth  = Fixed64::FromInt(366);   // 7.32m / 2
+// GK stance distance off goal line.
+constexpr Fixed64 kGKStanceOffset = Fixed64::FromInt(100);   // 1m
+// Box (penalty area) half-extent on Y axis (from goal line forward).
+constexpr Fixed64 kBoxDepth       = Fixed64::FromInt(1650);  // 16.5m
+
 } }  // namespace edge26::SimConst
