@@ -1,6 +1,7 @@
 // Copyright Edge26. All Rights Reserved.
 #include "Sim/SimWorld.h"
 #include "Sim/Constants.h"
+#include "Math/Hash.h"
 #include <cstring>
 
 namespace edge26 {
@@ -32,6 +33,18 @@ void SimWorld::Step(const FInputFrame& frame) {
         MaybeApplyKick(State.Ball, State.Players[i], frame);
     }
     StepBall(State.Ball);
+}
+
+void SimWorld::Snapshot(FSimWorldState& out) const {
+    out = State;  // POD copy
+}
+
+void SimWorld::Restore(const FSimWorldState& in) {
+    State = in;
+}
+
+uint64_t SimWorld::HashState() const {
+    return Hash::XXH64(&State, sizeof(State), 0);
 }
 
 }  // namespace edge26

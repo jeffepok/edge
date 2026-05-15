@@ -13,7 +13,10 @@ public:
 
     void Step(const FInputFrame& frame);
 
-    // Read-only access (snapshot/restore/hash come in M3).
+    void Snapshot(FSimWorldState& out) const;
+    void Restore(const FSimWorldState& in);
+    uint64_t HashState() const;
+
     const FSimWorldState& GetState() const { return State; }
           FSimWorldState& MutableState()    { return State; }
 

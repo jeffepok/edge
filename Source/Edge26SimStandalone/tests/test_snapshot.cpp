@@ -116,6 +116,74 @@ TEST_CASE(Sim_TwoRunsIdentical) {
     return 0;
 }
 
+TEST_CASE(Snapshot_RoundTrip) {
+    SimWorld w{0xABCDEF};
+    FInputFrame f{};
+    for (int i = 0; i < 50; ++i) {
+        f.TickNumber = (uint32_t)i;
+        f.Move[0][0] = (int8_t)(i % 3 - 1) * 100;
+        w.Step(f);
+    }
+    FSimWorldState snap;
+    w.Snapshot(snap);
+    for (int i = 50; i < 60; ++i) { f.TickNumber = (uint32_t)i; w.Step(f); }
+    w.Restore(snap);
+    int cmp = std::memcmp(&w.GetState(), &snap, sizeof(FSimWorldState));
+    TEST_EXPECT_EQ((int64_t)cmp, (int64_t)0);
+    return 0;
+}
+
+TEST_CASE(Hash_Stable) {
+    SimWorld a{0x1234}; SimWorld b{0x1234};
+    FInputFrame f{};
+    for (int i = 0; i < 100; ++i) {
+        f.TickNumber = (uint32_t)i;
+        a.Step(f); b.Step(f);
+    }
+    TEST_EXPECT_EQ(a.HashState(), b.HashState());
+    return 0;
+}
+
+TEST_CASE(Rollback_FullRoundTrip) {
+    FInputFrame f{};
+    uint64_t finalHash_run1;
+    {
+        SimWorld w{0xC0FFEE};
+        for (int i = 0; i < 100; ++i) {
+            f.TickNumber = (uint32_t)i;
+            f.Move[0][0] = (int8_t)((i * 7) % 200 - 100);
+            f.Move[0][1] = (int8_t)((i * 11) % 200 - 100);
+            w.Step(f);
+        }
+        finalHash_run1 = w.HashState();
+    }
+
+    SimWorld w{0xC0FFEE};
+    for (int i = 0; i < 50; ++i) {
+        f.TickNumber = (uint32_t)i;
+        f.Move[0][0] = (int8_t)((i * 7) % 200 - 100);
+        f.Move[0][1] = (int8_t)((i * 11) % 200 - 100);
+        w.Step(f);
+    }
+    FSimWorldState snap;
+    w.Snapshot(snap);
+    // Burn ticks down a dead path.
+    for (int i = 50; i < 90; ++i) {
+        f.TickNumber = (uint32_t)i;
+        f.Move[0][0] = 127;
+        w.Step(f);
+    }
+    w.Restore(snap);
+    for (int i = 50; i < 100; ++i) {
+        f.TickNumber = (uint32_t)i;
+        f.Move[0][0] = (int8_t)((i * 7) % 200 - 100);
+        f.Move[0][1] = (int8_t)((i * 11) % 200 - 100);
+        w.Step(f);
+    }
+    TEST_EXPECT_EQ(w.HashState(), finalHash_run1);
+    return 0;
+}
+
 int RunSnapshotTests() {
     TEST_RUN(WorldState_Sizes);
     TEST_RUN(WorldState_Aligned);
@@ -126,5 +194,8 @@ int RunSnapshotTests() {
     TEST_RUN(Ball_SettlesOnGround);
     TEST_RUN(Kick_PassImpulse);
     TEST_RUN(Sim_TwoRunsIdentical);
+    TEST_RUN(Snapshot_RoundTrip);
+    TEST_RUN(Hash_Stable);
+    TEST_RUN(Rollback_FullRoundTrip);
     return 0;
 }
