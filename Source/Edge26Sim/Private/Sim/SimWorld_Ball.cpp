@@ -57,4 +57,28 @@ void StepBall(FSimBallState& b) {
     }
 }
 
+void MaybeApplyKick(FSimBallState& b, const FSimPlayerState& p, const FInputFrame& frame) {
+    if (p.ControllerIndex == kStationaryController) return;
+    uint8_t buttons = frame.Buttons[p.ControllerIndex];
+
+    Fixed64 speed, lift;
+    if      (buttons & InputButton::Shoot) { speed = SimConst::ShotSpeed; lift = SimConst::ShotLift; }
+    else if (buttons & InputButton::Chip)  { speed = SimConst::ChipSpeed; lift = SimConst::ChipLift; }
+    else if (buttons & InputButton::Pass)  { speed = SimConst::PassSpeed; lift = SimConst::PassLift; }
+    else                                   { return; }
+
+    FixedVec3 to = b.Position - p.Position;
+    Fixed64 distSq = to.X * to.X + to.Y * to.Y + to.Z * to.Z;
+    Fixed64 reachSq = SimConst::KickReach * SimConst::KickReach;
+    if (distSq.Raw > reachSq.Raw) return;
+
+    Fixed32 cosH = SimMath::Cos(p.Heading);
+    Fixed32 sinH = SimMath::Sin(p.Heading);
+    Fixed64 cosQ32 = Fixed64::FromRaw((int64_t)cosH.Raw << 16);
+    Fixed64 sinQ32 = Fixed64::FromRaw((int64_t)sinH.Raw << 16);
+
+    b.Velocity = { cosQ32 * speed, sinQ32 * speed, lift };
+    b.Flags &= ~BallFlag::Grounded;
+}
+
 }  // namespace edge26

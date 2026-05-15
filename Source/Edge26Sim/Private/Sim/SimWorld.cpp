@@ -18,6 +18,7 @@ SimWorld::SimWorld(uint64_t rngSeed) {
 
 extern void StepPlayer(FSimPlayerState& p, const FInputFrame& frame);
 extern void StepBall(FSimBallState& b);
+extern void MaybeApplyKick(FSimBallState& b, const FSimPlayerState& p, const FInputFrame& frame);
 
 void SimWorld::Step(const FInputFrame& frame) {
     State.TickNumber = frame.TickNumber;
@@ -25,6 +26,10 @@ void SimWorld::Step(const FInputFrame& frame) {
     // Player updates in ascending ControllerIndex order (deterministic).
     for (int i = 0; i < kSimPlayerCount; ++i) {
         StepPlayer(State.Players[i], frame);
+    }
+    // Kicks resolved in ascending player index for deterministic order.
+    for (int i = 0; i < kSimPlayerCount; ++i) {
+        MaybeApplyKick(State.Ball, State.Players[i], frame);
     }
     StepBall(State.Ball);
 }

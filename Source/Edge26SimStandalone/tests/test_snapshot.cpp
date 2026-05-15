@@ -78,6 +78,26 @@ TEST_CASE(Ball_SettlesOnGround) {
     return 0;
 }
 
+TEST_CASE(Kick_PassImpulse) {
+    SimWorld w{1};
+    w.MutableState().Ball.Position = FixedVec3::Zero();
+    w.MutableState().Ball.Velocity = FixedVec3::Zero();
+    w.MutableState().Ball.Position.Z = SimConst::BallRadius;
+    w.MutableState().Players[0].Position = {Fixed64::FromInt(0), Fixed64::FromInt(50), Fixed64::FromInt(0)};
+    w.MutableState().Players[0].Heading = FixedAngle::FromRaw(-FixedAngle::PiRaw() / 2);
+
+    FInputFrame f{};
+    f.TickNumber = 1;
+    f.Buttons[0] = InputButton::Pass;
+    w.Step(f);
+    // Ball should have nonzero velocity after the kick.
+    bool moved = w.GetState().Ball.Velocity.X.Raw != 0 ||
+                 w.GetState().Ball.Velocity.Y.Raw != 0 ||
+                 w.GetState().Ball.Velocity.Z.Raw != 0;
+    TEST_EXPECT_TRUE(moved);
+    return 0;
+}
+
 int RunSnapshotTests() {
     TEST_RUN(WorldState_Sizes);
     TEST_RUN(WorldState_Aligned);
@@ -86,5 +106,6 @@ int RunSnapshotTests() {
     TEST_RUN(Player_RespondsToStickInput);
     TEST_RUN(Ball_FallsUnderGravity);
     TEST_RUN(Ball_SettlesOnGround);
+    TEST_RUN(Kick_PassImpulse);
     return 0;
 }
