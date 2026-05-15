@@ -1,224 +1,161 @@
 # Edge 26 — Runbook
 
-This document is the editor-side companion to the C++ source. Follow it top-to-bottom for the first run; later sessions only need the relevant section.
+Editor + sim-side companion to the C++ source. Top-to-bottom for first run; section-by-section for later sessions.
 
-> **Convention**: Anything tagged **[Editor]** must be done with the UE5 editor open. **[CLI]** can be done from a terminal.
+> **Conventions:** **[CLI]** = terminal command. **[Editor]** = UE5 editor required. **[USER]** = manual step.
 
 ---
 
-## 1. First-time compile
+## 1. First-time bring-up
 
-### 1.1 Generate the IDE project [CLI]
+### 1.1 Clone + regenerate project files [CLI]
 
 ```bash
 cd /Users/jeffersonaddai-poku/Desktop/projects/Games/Edge26
 "/Users/Shared/Epic Games/UE_5.7/Engine/Build/BatchFiles/Mac/GenerateProjectFiles.sh" \
-  -project="$PWD/Edge26.uproject" -game -engine
+    -project="$PWD/Edge26.uproject" -game -engine
 ```
 
-This creates `Edge26.xcworkspace`. (Rider users: use Rider's "Open .uproject" instead — it triggers the same step.)
+### 1.2 Run the determinism gate (no UE5 needed) [CLI]
 
-### 1.2 First build [CLI or Xcode]
+```bash
+./Scripts/check_determinism.sh
+```
 
-Either build inside Xcode (target **Edge26Editor**, scheme **My Mac**) or from CLI:
+Expected: `PASS: all determinism checks`. Builds the standalone binary, runs the lint, replays three streams, verifies hashes, runs rollback round-trip. Takes ~5 seconds after the first build.
+
+Requires `cmake` (install via `brew install cmake` on macOS if missing).
+
+### 1.3 Build the editor [CLI or Xcode]
 
 ```bash
 "/Users/Shared/Epic Games/UE_5.7/Engine/Build/BatchFiles/Mac/Build.sh" \
-  Edge26Editor Mac Development -project="$PWD/Edge26.uproject" -waitmutex
+    Edge26Editor Mac Development -project="$PWD/Edge26.uproject" -waitmutex
 ```
 
-Expect 5–15 minutes for a clean build. Subsequent builds are incremental (~10–60s).
+Expect 5–15 min for a clean build; subsequent builds ~10–60 s.
 
-### 1.3 Open the editor [Editor]
+### 1.4 Open the editor [CLI]
 
 ```bash
 open Edge26.uproject
 ```
 
-If the editor offers to "build missing modules", click **Yes**. The first launch also runs shader compilation (background, watch the toolbar progress).
+---
+
+## 2. Architecture in 90 seconds
+
+- **`Source/Edge26Sim/`** is a UE5 module that depends *only* on `Core`. It is pure C++ — no `UCLASS`, no Engine, no Chaos. It holds the entire deterministic 50 Hz sim (ball + 2 player kinematic states in Q32.32 fixed-point).
+- **`Source/Edge26SimStandalone/`** is a CMake project that compiles the same Edge26Sim sources outside of UE5. Produces `edge26_sim_replay` (the headless determinism harness) and `replay_generator` (binary input stream generator).
+- **`Source/Edge26/`** is the existing UE5 module — now a thin adapter. `USimHostSubsystem` owns a `SimWorld`, ticks it at 50 Hz, and drives `AFootballerVisual` / `ASoccerBallVisual` actors with interpolated state every render frame.
+- **Determinism rules** (spec §4): no float, no `unordered_*`, no threads, no wall-clock, no Engine includes inside `Edge26Sim/`. Enforced by `Scripts/lint_sim.sh`, the Core-only `Build.cs`, the CMake build (which would fail if any UE5 leak existed), and the cross-platform GitHub Actions matrix.
+- **Sim/render boundary principle** (spec §3): animation, IK, ragdolls are *forever* visual-only. The sim writes contact events; the render layer honors them. No deterministic IK.
 
 ---
 
-## 2. Create the gameplay assets in the editor [Editor]
+## 3. The sim development loop
 
-The C++ classes are abstract scaffolding. You need editor-created assets that subclass them so meshes, sounds, and animations can be assigned.
+You will rarely touch the UE5 editor when working on the sim. Cycle is:
 
-### 2.1 Folder layout
+1. Edit code in `Source/Edge26Sim/` or `Source/Edge26SimStandalone/`.
+2. Run `./Scripts/check_determinism.sh`. If it fails on baselines, that's expected — your change altered behavior.
+3. If the diff to the baselines is intentional, run `./Scripts/update_determinism_baseline.sh`, inspect `git diff`, then commit the baselines as part of your PR.
+4. If the diff is *not* intentional, you've introduced a sneaky non-determinism (or a bug). Triage with `--rollback-test` and per-tick hash dumps.
 
-In the **Content Browser**, create:
+`./Scripts/lint_sim.sh` runs first inside `check_determinism.sh` and catches forbidden tokens. If lint fires on a comment or genuinely safe usage, add `// SIM-LINT-OK: <reason>` on that line.
+
+---
+
+## 4. Editor-side gameplay assets [Editor]
+
+The C++ classes are abstract scaffolding. Editor-created assets supply the meshes, sounds, animations, and input maps.
+
+### 4.1 Asset folder layout
 
 ```
 Content/
-├── Levels/                  L_Pitch (the playable level)
-├── Input/                   IMC + IA assets
+├── Levels/                  L_Pitch
+├── Input/                   IMC_Player, IA_Move, IA_Sprint, IA_Pass, IA_Shoot, IA_Chip
 ├── Blueprints/
-│   ├── Game/                BP_SoccerGameMode, BP_GoalTrigger
-│   ├── Ball/                BP_SoccerBall
-│   └── Player/              BP_Footballer, ABP_Footballer (anim BP)
-├── Characters/              Imported skeletal meshes / Mixamo anims
-└── Audio/                   Crowd, kicks, whistle, footsteps
+│   ├── Game/                BP_SoccerGameMode, BP_GoalTrigger, BP_SimHostBootstrap
+│   ├── Ball/                BP_SoccerBall   (parent: SoccerBallVisual)
+│   └── Player/              BP_Footballer, BP_OpponentFootballer (parent: FootballerVisual)
+│                            ABP_Footballer (parent: AnimInstance — cosmetic)
+└── Characters/              Mannequins/...
 ```
 
-### 2.2 Input Mapping Context + Input Actions
+### 4.2 Set the `ControllerIndex` on each footballer
 
-For each action, **right-click → Input → Input Action**. Recommended setup:
+Open each `BP_Footballer` placement in the level. In the Details panel, set:
+- `BP_Footballer` instance for P1: `ControllerIndex = 0`.
+- `BP_OpponentFootballer` for P2 (or the second `BP_Footballer`): `ControllerIndex = 1`, or `255` (0xFF) to make it stationary.
 
-| Asset | Value type | Mapped to |
-|---|---|---|
-| `IA_Move` | Axis2D (Vector2D) | WASD (composite) + Gamepad Left Stick 2D |
-| `IA_Look` | Axis2D | Mouse XY + Gamepad Right Stick 2D |
-| `IA_Sprint` | Bool | Left Shift + Gamepad Left Shoulder |
-| `IA_Pass` | Bool | Space + Gamepad Face Button Bottom (A/Cross) |
-| `IA_Shoot` | Bool | F + Gamepad Face Button Right (B/Circle) |
-| `IA_Chip` | Bool | Q + Gamepad Face Button Top (Y/Triangle) |
+### 4.3 Wire `SimInputCollector` on the player BP
 
-Then create `IMC_Player` (Input Mapping Context) and add each `IA_*` with the appropriate keys + modifiers (`Negate Y` on `IA_Move` for the W key composite, `Swizzle XY` on stick if needed).
+On `BP_Footballer`, select the `InputCollector` component and set:
+- `DefaultMappingContext` → `IMC_Player`
+- `IA_Move` → the existing `IA_Move` Input Action
+- `IA_Sprint` → `IA_Sprint`
+- `IA_Pass`   → `IA_Pass`
+- `IA_Shoot`  → `IA_Shoot`
+- `IA_Chip`   → `IA_Chip`
 
-### 2.3 BP_Footballer (Player Blueprint)
+### 4.4 Place the bootstrap actor
 
-1. Right-click in `Content/Blueprints/Player` → **Blueprint Class** → search for `FootballerCharacter` → name it `BP_Footballer`.
-2. Open it. In **Class Defaults**, set:
-   - `Default Mapping Context` → `IMC_Player`.
-   - `IA_Move`, `IA_Look`, `IA_Sprint`, `IA_Pass`, `IA_Shoot`, `IA_Chip` → the assets you just created.
-3. Select the `Mesh` component → assign a skeletal mesh. **Quick option**: enable `Engine/Plugins/Animation/AnimContent → Manny/Quinn` from the Add Content browser; or use a Mixamo upload (see §4).
-4. Anim Class → `ABP_Footballer` (created next).
+Create a `BP_SimHostBootstrap` Blueprint subclass of `ASimHostBootstrap` (or use the C++ class directly). Drag one into `L_Pitch` at origin. Save the level.
 
-### 2.4 BP_SoccerBall
+### 4.5 PIE check (acceptance criteria from spec §14 #5)
 
-1. Blueprint Class → `SoccerBall` → `BP_SoccerBall`.
-2. `Mesh` component → assign a sphere static mesh (Engine basic shapes). Scale uniformly so the visual matches the 11cm collision radius (default cube is 50cm so set scale `0.22` for a 1m sphere — adjust to taste).
-3. Optional: assign `KickSound` and `BounceSound`.
-
-### 2.5 BP_GoalTrigger
-
-1. Blueprint Class → `GoalTrigger` → `BP_GoalTrigger`.
-2. Place two instances in the level — one per goal — and on each set `Defending Team Id` to `0` and `1`.
-3. Optionally add nets/posts as static mesh children.
-
-### 2.6 BP_SoccerGameMode
-
-1. Blueprint Class → `SoccerGameMode` → `BP_SoccerGameMode`.
-2. **Class Defaults**: `Default Pawn Class` → `BP_Footballer`. `HUD Class` → `ASoccerHUD` (or a subclass).
-3. Edit `Edge26.uproject`'s World Settings? — better: in **Project Settings → Maps & Modes → Default GameMode**, point at `BP_SoccerGameMode`.
-
-### 2.7 ABP_Footballer (Animation Blueprint)
-
-1. Right-click → **Animation → Animation Blueprint**.
-2. Parent class: `FootballerAnimInstance` (the C++ base — gives you `Speed`, `RelativeDirection`, `LeanAngle`, etc., for free).
-3. Target Skeleton: whichever skeleton your mesh uses.
-4. In **AnimGraph**, create a state machine: `Idle / Locomotion / In Air / Kick`.
-5. The `Locomotion` state pipes into a 1D **Blend Space** keyed on `Speed` (Idle 0 → Walk 220 → Jog 500 → Sprint 820). For directional locomotion, switch to a 2D Blend Space on `(ForwardSpeed, RightSpeed)` or `(Speed, RelativeDirection)`.
-6. Add a `Lean` modifier in Anim Graph: `Modify Bone → spine_03`, Roll = `LeanAngle * 0.5`, axis = additive.
+Hit **Play in Editor**:
+- HUD shows `HOM 0 - 0 AWY` + `KICKOFF` banner.
+- WASD moves P1; movement is deliberately simple (no momentum preservation through turns — this is the v0 RC-car feel).
+- Pass / Shoot / Chip near the ball impulses it.
+- Ball into goal trigger fires `GOAL!`.
 
 ---
 
-## 3. Build the level [Editor]
+## 5. Re-parenting Blueprints after a C++ rename
 
-### 3.1 Create `L_Pitch`
-
-1. **File → New Level → Open World** (or Empty if you want to keep memory low).
-2. Save as `Content/Levels/L_Pitch`.
-3. Add a basic **Plane** static mesh, scale `(60, 90, 1)` for a roughly 60m × 90m miniature pitch (UE units = cm — scale 1.0 = 100cm).
-4. Apply a green grass material (Engine starter content has `M_Grass_Tile` if you enabled the starter content; otherwise create a simple `M_Pitch` with a grass texture).
-5. Add **Directional Light** (sun), **Sky Light**, **Sky Atmosphere**, **Volumetric Cloud**, **Exponential Height Fog**, **Post Process Volume** (Unbound). Lumen runs by default with the renderer settings already in `DefaultEngine.ini`.
-6. Drop two `BP_GoalTrigger` instances at each end (~45m from center along Y), facing inward. Set `DefendingTeamId` 0 and 1.
-7. Drop one `BP_SoccerBall` near the center spot.
-8. Drop two `BP_Footballer` instances + two `Player Start` actors.
-9. **World Settings** → set `GameMode Override` → `BP_SoccerGameMode` (only needed if not set globally).
-
-### 3.2 Verify
-
-Hit **Play in Editor**. You should see:
-
-- HUD scoreline with `HOM 0 - 0 AWY` and a `KICKOFF` banner.
-- Camera follows the controlled footballer at a high pitch.
-- WASD moves; Shift sprints; Space passes the ball.
-- Driving the ball into the goal triggers `GOAL!` and a kickoff reset.
-
-If movement feels slidey: confirm `BP_Footballer`'s `Character Movement` component has `Orient Rotation To Movement = true` and `Use Controller Desired Rotation = false`.
-
----
-
-## 4. Animations (recommended path)
-
-The C++ already exposes everything an AnimBP needs. The work is editor-only.
-
-### 4.1 Source
-
-- **Mixamo** (free, fastest path): https://www.mixamo.com — upload a base mesh once, then bulk-download FBX with skin. Search: `idle`, `running`, `sprinting`, `walk`, `soccer kick`, `slide tackle`, `running stop`, `quick turn`.
-- **Unreal Marketplace**: search `football mocap` or `sports animations`. Quality is higher but mostly paid.
-- **Rokoko** free pack: useful for body language.
-
-### 4.2 Retargeting (UE5 IK Rig)
-
-1. Import the Mixamo FBX with **Skeleton: <create new>** the first time. Subsequent imports reuse the same skeleton.
-2. Create an **IK Rig** for the Mixamo skeleton (`IKR_Mixamo`).
-3. Create an **IK Rig** for your target skeleton (e.g. `IKR_Manny` if using UE5 Mannequin).
-4. Create an **IK Retargeter** linking source → target.
-5. **Batch Retarget Animations** → output to `Content/Characters/Anims/`.
-
-### 4.3 Wire into ABP_Footballer
-
-- Replace the Idle/Walk/Run nodes inside the Blend Space with the retargeted clips.
-- Add a `Kick` montage and call `PlayAnimMontage` from `BP_Footballer`'s `OnKick` event (you can also expose a `BlueprintImplementableEvent` from the C++ if you want it called automatically — currently `ExecuteKick` only fires the ball; a follow-up commit could call a montage by name).
-
-### 4.4 Foot planting / IK (later)
-
-Use **Control Rig** or a **Foot IK** node in the AnimBP that traces down per foot socket and modifies effector locations to match terrain. Set up basic floor IK first, refine later.
-
----
-
-## 5. What's NOT done — milestones 6 and 7
-
-### 5.1 Milestone 6 — Opponent AI
-
-Create `Source/Edge26/Public/AI/OpponentAIController.h` extending `AAIController`. Skeleton plan:
-
-1. **Blackboard keys**: `BallActor` (Object), `BallLocation` (Vector), `bHasBall` (Bool), `OwnTeamId` (Int), `TargetGoal` (Vector).
-2. **Behavior Tree**: top-level Selector
-   - **HasBall** → Sequence: `MoveTo TargetGoal` → `Shoot` (call `ApplyKick` directly via a custom BTTask).
-   - **BallNearby** (range < 200) → `BTTask_Tackle` (sphere overlap, push toward ball, possibly set bHasBall).
-   - **Default** → `MoveTo BallLocation`.
-3. **Service**: tick every 0.2s — refresh `BallLocation` from the world's `ASoccerBall`.
-4. **Spawn**: `BP_OpponentFootballer` subclass of `BP_Footballer`. Its AI Controller Class = `BP_OpponentAIController`.
-
-### 5.2 Milestone 7 — Animation polish
-
-Once the AnimBP exists, the next quality jumps are:
-
-- **Strafe / directional locomotion** via 2D Blend Space on `(ForwardSpeed, RightSpeed)` instead of 1D.
-- **Distance Matching** for stop animations — eliminates foot sliding when decelerating.
-- **Turn-in-place** state driven by `YawRatePerSec` when `Speed < 50`.
-- **Foot IK** with `Two Bone IK` nodes per foot, traced against the pitch.
-- **Additive lean** layer driven by `LeanAngle` modifying `spine_03` roll.
-- **Kick montages** with hit windows (`AnimNotify_Kick`) that call `ApplyKick` precisely on foot contact rather than on input press.
-
-### 5.3 Visual polish (parallel track)
-
-- **Lumen GI** is on by default — tune via Post Process Volume (Exposure mode = Manual, Bloom intensity ~0.6, AutoExposure if using Manual disable).
-- **Volumetric Fog** at the stadium ground level for atmosphere.
-- **Crowd**: low-poly impostor planes around the pitch, animated via Niagara or a static texture array.
-- **Grass shader**: tessellated WPO grass blades using `M_Grass_Master` from Lyra/Megascans, or a Niagara grass component.
-
----
-
-## 6. Useful CLI reference
+If a C++ class an asset depends on is renamed, moved, or deleted:
 
 ```bash
-# Cook + run packaged build (after Content is set up):
-"/Users/Shared/Epic Games/UE_5.7/Engine/Build/BatchFiles/RunUAT.sh" \
-  BuildCookRun -project="$PWD/Edge26.uproject" \
-  -platform=Mac -clientconfig=Development \
-  -build -cook -stage -package -archive \
-  -archivedirectory="$PWD/Packaged"
-
-# Quick standalone editor with logs:
 "/Users/Shared/Epic Games/UE_5.7/Engine/Binaries/Mac/UnrealEditor.app/Contents/MacOS/UnrealEditor" \
-  "$PWD/Edge26.uproject" -log
+    "$PWD/Edge26.uproject" -run=PythonScript \
+    -script="$PWD/Scripts/editor/reparent_blueprints.py" -nopause -unattended -nullrhi
+```
 
-# Run automation tests headless:
+The script is idempotent. The `-nullrhi` flag skips the renderer load so the commandlet completes in ~1 minute instead of 5+. Commit the resulting `.uasset` diffs.
+
+Edit the `REPARENT` list in the script to add/remove BP-to-class mappings.
+
+---
+
+## 6. Useful CLI
+
+```bash
+# Standalone determinism gate (no UE5):
+./Scripts/check_determinism.sh
+
+# Regenerate baselines after a deliberate sim behavior change:
+./Scripts/update_determinism_baseline.sh
+
+# Run a single replay and print hashes:
+./build/sim/edge26_sim_replay --input Source/Edge26SimStandalone/tests/replays/basic.input --hash-every 1
+
+# Rollback round-trip on the torture stream:
+./build/sim/edge26_sim_replay --input Source/Edge26SimStandalone/tests/replays/rollback_torture.input --rollback-test --hash-every 0
+
+# Self-test (math + snapshot tests):
+./build/sim/edge26_sim_replay --self-test
+
+# UE5 editor build:
+"/Users/Shared/Epic Games/UE_5.7/Engine/Build/BatchFiles/Mac/Build.sh" \
+    Edge26Editor Mac Development -project="$PWD/Edge26.uproject" -waitmutex
+
+# Headless Python commandlet (any script):
 "/Users/Shared/Epic Games/UE_5.7/Engine/Binaries/Mac/UnrealEditor.app/Contents/MacOS/UnrealEditor" \
-  "$PWD/Edge26.uproject" -ExecCmds="Automation RunTests Edge26" -unattended -nopause
+    "$PWD/Edge26.uproject" -run=PythonScript \
+    -script="$PWD/Scripts/editor/<script>.py" -nopause -unattended -nullrhi
 ```
 
 ---
@@ -227,22 +164,24 @@ Once the AnimBP exists, the next quality jumps are:
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| Player won't move | No `IMC_Player` assigned on `BP_Footballer` | Set `Default Mapping Context` in class defaults |
-| Camera clips into player | Spring arm too short | Increase `Base Arm Length` on `BP_Footballer`'s SpringArm |
-| Ball passes through player | Player has no capsule collision or wrong profile | Verify `CapsuleComponent` profile is `Pawn` |
-| Goal triggers immediately on kickoff | Trigger overlapping ball spawn | Move trigger box behind goal line; `BallSpawnLocation` away from box |
-| AnimBP shows T-pose | Skeleton mismatch or Anim Class not set | Confirm `BP_Footballer.Mesh.Anim Class = ABP_Footballer` and skeletons match |
-| Compile fails on `IWYUSupport` | Older engine version | Confirm engine is 5.5+; remove `IWYUSupport = IWYUSupport.Full;` from `Edge26.Build.cs` if targeting 5.3 |
+| `lint_sim.sh: FORBIDDEN (...)` | Sim code introduced a banned token | Replace with the deterministic equivalent or add `// SIM-LINT-OK: <reason>` if safe |
+| `ROLLBACK MISMATCH at tick N` | State outside the snapshot | Byte-diff before/after the round-trip; the differing struct field is the culprit |
+| macOS hashes ≠ Linux hashes in CI | Non-deterministic FP / hash-map iteration / wall-clock | Run `lint_sim.sh`; if clean, look for `__SIZEOF_INT128__` path differences in `Mul64.h` |
+| Player doesn't move in PIE | `InputCollector` IA references not assigned in BP, or `IMC_Player` not set | Open `BP_Footballer`, fill the `InputCollector` component properties (§4.3) |
+| Ball doesn't react to kick | `BP_SoccerBall` parent isn't `SoccerBallVisual`, or BP_Footballer is not facing the ball | Run `reparent_blueprints.py`; confirm Parent Class in the BP editor |
+| Visuals lag a tick or teleport | Render-frame interpolation needs both `PrevState`/`CurrState` initialized; the `SimHostBootstrap` actor ensures the subsystem comes up in time | Drop a Bootstrap actor into `L_Pitch` |
+| Edge26Sim symbols not found at link | `EDGE26SIM_API` missing on a new class; macOS linker dead-strips it | Add `EDGE26SIM_API` to the class declaration in the header (the macro is a no-op in standalone CMake) |
+| Compile error `Cpp17 is no longer supported` | Pinned `CppStandard = CppStandardVersion.Cpp17` in a Build.cs | Remove the line; UE 5.7 default (Cpp20+) is fine |
+| `-Werror,-Wshadow` build error in adapter | Local variable shadows a class field | Rename the local (e.g. `Ball` → `BallState`) |
 
 ---
 
 ## 8. Where I would start tomorrow
 
-1. **Compile the project** (§1) and confirm it boots.
-2. **Create IMC + IA assets** (§2.2) — without these, you can't drive the player.
-3. **Drop a Mannequin into BP_Footballer** so you have *some* visual to control.
-4. **Place L_Pitch** with one ball and two goals (§3.1).
-5. **Hit Play.** Tweak `JogSpeed`, `SprintSpeed`, `BaseArmLength`, `BallLinearDamping` until the prototype "feels right" — that's the single most important thing in football games.
-6. Only then move on to AI (§5.1) or animations (§4 / §5.2).
+The sim core is foundation. Next slices (in priority order — pick one and brainstorm it into its own spec):
 
-Movement feel beats feature count. Resist the urge to add menus, modes, or career systems until the on-pitch feel is solid.
+1. **Phase 2 — Spatial Value Model + 22-player AI.** The most visible quality jump. Builds on the sim's deterministic kinematic loop.
+2. **Phase 3 — Motion-matching animation + procedural ball-contact IK (render-side per spec §3).** The most visible feel jump. Requires real football mocap.
+3. **Phase 4 — Rollback netcode.** Builds on the snapshot/restore + headless harness.
+
+`project_breakdown.md` has the high-level vision for all of them. `docs/superpowers/specs/` is where individual phase designs land. `docs/superpowers/plans/` is where they get broken down into bite-sized tasks like this v0 plan was.
