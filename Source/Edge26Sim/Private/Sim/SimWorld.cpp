@@ -5,6 +5,7 @@
 #include "AI/Formations.h"
 #include "AI/Roles.h"
 #include "AI/SpatialValueModel.h"
+#include "AI/PlayerDecisions.h"
 #include <cstring>
 
 namespace edge26 {
@@ -48,6 +49,13 @@ void SimWorld::Step(const FInputFrame& frame) {
 
     // Update all 5 spatial value fields before any player/ball logic (spec §5).
     UpdateSpatialFields(State);
+
+    // Layer C: per-AI player off-ball intent evaluation.
+    for (int i = 0; i < kSimPlayerCount; ++i) {
+        FSimPlayerState& p = State.Players[i];
+        if (i == State.Match.HumanControlledIndex) continue;   // human is handled below
+        UpdatePlayerAI(p, State, i);
+    }
 
     // Player updates in ascending ControllerIndex order (deterministic).
     for (int i = 0; i < kSimPlayerCount; ++i) {

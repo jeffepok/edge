@@ -463,6 +463,25 @@ TEST_CASE(SpatialModel_DefCoverageHighWhereTeammatesScarce) {
     return 0;
 }
 
+TEST_CASE(Sim_22PlayerTickStable) {
+    using namespace edge26;
+    SimWorld w{1};
+    FInputFrame f{};
+    for (int tick = 0; tick < 100; ++tick) {
+        f.TickNumber = (uint32_t)tick;
+        w.Step(f);
+    }
+    // Sim should still be alive — verify world tick number advanced and no
+    // player has NaN-like fixed values (e.g., absurd positions).
+    TEST_EXPECT_EQ(w.GetState().TickNumber, (uint32_t)99);
+    for (int i = 0; i < kSimPlayerCount; ++i) {
+        const auto& p = w.GetState().Players[i];
+        TEST_EXPECT_TRUE(Abs(p.Position.X).Raw < (SimConst::PitchHalfLen * Fixed64::FromInt(2)).Raw);
+        TEST_EXPECT_TRUE(Abs(p.Position.Y).Raw < (SimConst::PitchHalfWid * Fixed64::FromInt(2)).Raw);
+    }
+    return 0;
+}
+
 int RunSnapshotTests() {
     TEST_RUN(WorldState_Sizes);
     TEST_RUN(WorldState_Aligned);
@@ -489,5 +508,6 @@ int RunSnapshotTests() {
     TEST_RUN(SpatialModel_ThreatHighInOppBox);
     TEST_RUN(SpatialModel_PassReceptionForwardOfBall);
     TEST_RUN(SpatialModel_StepUpdatesFields);
+    TEST_RUN(Sim_22PlayerTickStable);
     return 0;
 }
