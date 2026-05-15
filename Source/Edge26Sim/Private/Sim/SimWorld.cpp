@@ -11,9 +11,14 @@ SimWorld::SimWorld(uint64_t rngSeed) {
     std::memset(&State, 0, sizeof(State));
     State.RngState = (rngSeed != 0) ? rngSeed : 0xDEADBEEFCAFEBABEull;
 
-    // Initialize player ControllerIndex fields. ControllerIndex 0xFF = stationary.
-    for (int i = 0; i < kSimPlayerCount; ++i) {
-        State.Players[i].ControllerIndex = (uint8_t)i;  // P1 → 0, P2 → 1
+    // Initialize player ControllerIndex fields.
+    // Players 0-1 are human-controlled; 2-21 are stationary until AI is wired (Phase 2).
+    constexpr int kHumanPlayers = 2;
+    for (int i = 0; i < kHumanPlayers; ++i) {
+        State.Players[i].ControllerIndex = (uint8_t)i;            // P1 → 0, P2 → 1
+    }
+    for (int i = kHumanPlayers; i < kSimPlayerCount; ++i) {
+        State.Players[i].ControllerIndex = kStationaryController; // 0xFF = stationary
     }
 }
 

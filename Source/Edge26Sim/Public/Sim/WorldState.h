@@ -7,18 +7,17 @@
 
 namespace edge26 {
 
-constexpr int kSimPlayerCount = 2;  // v0 hardcoded; becomes MAX_PLAYERS=22 later
+constexpr int kSimPlayerCount = 22;   // 11 per team. Was 2 in Phase 1.
 
 struct FSimWorldState {
-    uint32_t        TickNumber;                   // 4 B
-    uint32_t        _pad0;                        // explicit pad before 8-aligned RngState
-    uint64_t        RngState;                     // 8 B
-    FSimBallState   Ball;                         // 80 B
-    FSimPlayerState Players[kSimPlayerCount];     // 176 B (2 * 88 B after T1.2 extension)
+    uint32_t        TickNumber;
+    uint32_t        _pad0;
+    uint64_t        RngState;
+    FSimBallState   Ball;
+    FSimPlayerState Players[kSimPlayerCount];
 };
-// FSimWorldState grows to 272 B after FSimPlayerState extended to 88 B in T1.2.
-// Final world-state static_assert is deferred — size grows substantially in M2.
-static_assert(sizeof(FSimWorldState)  == 272, "FSimWorldState must be 272 bytes");
-static_assert(alignof(FSimWorldState) == 8,   "FSimWorldState must be 8-aligned");
+// Strict size assertion is deferred to M2 (when FMatchState + FSpatialValueModel
+// are embedded). For now, validate alignment only.
+static_assert(alignof(FSimWorldState) == 8, "FSimWorldState must be 8-aligned");
 
 }  // namespace edge26
