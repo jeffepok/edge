@@ -13,13 +13,22 @@ interpolated transforms, rewritten RUNBOOK. Automated acceptance criteria
 (spec §14 #1–#4, #6–#8) all pass; PIE acceptance (§14 #5) confirmed
 working end-to-end.
 
-We are at **Phase 2 M5 of M12** (Layer B unit coordination). M4 (Layer C on-ball decisions)
+We are at **Phase 2 M6 of M12** (Layer A team strategy). M5 (Layer B unit coordination)
 is complete: PendingButtons field in FSimPlayerState (88 B layout preserved), PassSuccessProbability
 + BestPassReceiverIdx helpers, EvaluateOnBall evaluator (Pass/Shoot/Dribble/Hold/Clear), MaybeApplyKick
 widened to consume AI PendingButtons (ResolveButtonsForPlayer helper), IntendedPassTarget-directed pass
 normalization fixed (used Fixed64 operator/ to avoid overflow), UpdatePossession (pickup radius + out-of-pitch
 clear, with overflow-safe delta clamping), Sim_PossessionFlipsOnPickup + Sim_AICarrierFiresPass tests pass;
 28 self-tests; baselines verified; lint + CI gates green.
+M5 (Layer B unit coordination) is complete: UnitOf(ERole) constexpr helper in Roles.h; UnitCoordination.h/.cpp
+with UpdateDefensiveUnit (defensive line from avg CB/FB X + LineHeightBias, offside line from last-defender X vs
+ball X, compactness as X-stddev, nearest-to-ball press nomination), UpdateMidfieldUnit (central-channel press,
+line, compactness), UpdateAttackUnit (top-line from most-forward attacker, same-side FB overlap nomination);
+UpdateAllUnits wired at 10 Hz in SimWorld::Step (before Layer C); Layer C Press block replaced with Layer B
+nomination check (3× boost for nominee), MakeRunForward gets 2× overlap boost for nominated FB; overflow-safe
+arithmetic used throughout (Fixed64::operator* instead of raw multiply-then-divide for sign flip); 48 self-tests
+pass; baselines regenerated; lint + CI gates green. Judgment calls: plan's `raw * Sign.Raw / One` pattern
+replaced with `Fixed64::operator*` to prevent int64 intermediate overflow.
 Spec: `docs/superpowers/specs/2026-05-15-phase2-spatial-ai-design.md`. Plan:
 `docs/superpowers/plans/2026-05-15-phase2-spatial-ai-plan.md`.
 
@@ -40,7 +49,7 @@ Spec: `docs/superpowers/specs/2026-05-15-phase2-spatial-ai-design.md`. Plan:
 - [x] M2. Spatial Value Model (5 fields × 1768 cells)
 - [x] M3. Layer C off-ball intents
 - [x] M4. Layer C on-ball decisions
-- [ ] M5. Layer B unit coordination (defensive line, press, overlap)
+- [x] M5. Layer B unit coordination (defensive line, press, overlap)
 - [ ] M6. Layer A team strategy (mentality, late-game adjustments)
 - [ ] M7. Offside enforcement
 - [ ] M8. Simple goalkeeper AI
@@ -75,3 +84,4 @@ Spec: `docs/superpowers/specs/2026-05-15-phase2-spatial-ai-design.md`. Plan:
 - M2 landed: FSpatialValueModel (70 KB) + FMatchState (184 B) embedded into FSimWorldState (72,936 B); 5 spatial-field update functions (Space, DefCoverage, LaneOccupancy, Threat, PassReception); UpdateSpatialFields wired into SimWorld::Step at 50 Hz; baselines regenerated; lint + CI gates green.
 - M3 landed: EIntent enum (12 values, 7 off-ball + 5 on-ball stubs), FRoleWeights struct + kRoleWeightsTable[10 roles] with per-role multipliers, full EvaluateOffBall evaluator (7 intents: HoldPosition, MakeRunForward, DropToReceive, ProvideWidth, Press, TrackRunner, HoldDefensiveLine) scored from spatial value fields with saturation-safe distance arithmetic; UpdatePlayerAI wired into SimWorld::Step at 50 Hz; Sim_22PlayerTickStable smoke test (22 players, 100 ticks, position bounds check) passes; baselines regenerated; lint + CI gates green. Judgment call: F32() helper uses compile-time double with SIM-LINT-OK annotation (avoids 110 pre-computed integer literals).
 - M4 landed: PendingButtons byte added to FSimPlayerState (at offset 62, _pad[2] → PendingButtons+_pad0, 88 B maintained); PassSuccessProbability + BestPassReceiverIdx helpers (blocker projection uses __int128 via SIM-LINT-OK); EvaluateOnBall evaluator (5 intents: Pass/Shoot/Dribble/Hold/Clear); UpdatePlayerAI routes on-ball vs off-ball per tick; MaybeApplyKick widened to `(ball, player, frame, worldState, playerIdx)` with ResolveButtonsForPlayer helper; IntendedPassTarget-directed pass using Fixed64 operator/ for overflow-safe normalization (plan used Raw*One/Raw which overflows for large distances); UpdatePossession (80cm pickup radius + out-of-pitch clear) with delta-clamped overflow protection; 28 self-tests (2 new: Sim_PossessionFlipsOnPickup, Sim_AICarrierFiresPass); baselines verified unchanged (replay streams don't exercise AI carriers near ball); lint + CI gates green. Judgment calls: (1) T4.1+T4.2 helper additions combined into single commit to satisfy -Werror,-Wunused-function; (2) plan's normalize formula `(raw * Fixed64::One) / d_raw` replaced with `Fixed64 operator/` to prevent int64 overflow.
+- M5 landed: UnitCoordination.h/.cpp (UpdateDefensiveUnit, UpdateMidfieldUnit, UpdateAttackUnit, UpdateAllUnits); UnitOf(ERole) constexpr helper added to Roles.h; 10 Hz hook (every 5 ticks) in SimWorld::Step before Layer C; Layer C Press replaced with Layer B nomination (3× boost, nominee is nearest unit member to ball per unit type); MakeRunForward gets 2× boost when FB is the overlap-nominated player; overflow-safe arithmetic throughout (Fixed64::operator* instead of raw multiply/divide for sign-flip operations); 48 self-tests pass; baselines regenerated; lint + CI gates green. Judgment calls: plan's `bias.Raw * Sign.Raw / Fixed64::One` pattern overflows int64 for realistic bias values — replaced with Fixed64::operator* which uses __int128 internally; same fix applied to signed-forward ↔ absolute-X conversions in UpdateDefensiveUnit and UpdateAttackUnit.
