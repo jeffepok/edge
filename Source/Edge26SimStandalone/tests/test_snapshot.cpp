@@ -1,6 +1,7 @@
 #include "Sim/WorldState.h"
 #include "Sim/SimWorld.h"
 #include "Sim/Constants.h"
+#include "AI/Formations.h"
 #include "TestHarness.h"
 #include <cstring>
 
@@ -206,6 +207,23 @@ TEST_CASE(Hash_PerTickStable) {
     return 0;
 }
 
+TEST_CASE(Formation_HomeAwaySymmetry) {
+    using namespace edge26;
+    // GK slot for home should be near -X (own goal); for away, near +X.
+    FixedVec3 homeGK = SlotWorldPosition(0, 0);
+    FixedVec3 awayGK = SlotWorldPosition(0, 1);
+    TEST_EXPECT_TRUE(homeGK.X.Raw < 0);
+    TEST_EXPECT_TRUE(awayGK.X.Raw > 0);
+    // Y should be identical (both GKs in center)
+    TEST_EXPECT_EQ(homeGK.Y.Raw, awayGK.Y.Raw);
+    // The 11th slot (ST) for home should be near +X (opp goal); for away near -X.
+    FixedVec3 homeST = SlotWorldPosition(10, 0);
+    FixedVec3 awayST = SlotWorldPosition(10, 1);
+    TEST_EXPECT_TRUE(homeST.X.Raw > 0);
+    TEST_EXPECT_TRUE(awayST.X.Raw < 0);
+    return 0;
+}
+
 int RunSnapshotTests() {
     TEST_RUN(WorldState_Sizes);
     TEST_RUN(WorldState_Aligned);
@@ -220,5 +238,6 @@ int RunSnapshotTests() {
     TEST_RUN(Hash_Stable);
     TEST_RUN(Rollback_FullRoundTrip);
     TEST_RUN(Hash_PerTickStable);
+    TEST_RUN(Formation_HomeAwaySymmetry);
     return 0;
 }
