@@ -38,7 +38,13 @@ TEST_CASE(SimWorld_FreshIsZeroExceptSeed) {
     const FSimWorldState& s = w.GetState();
     TEST_EXPECT_EQ(s.TickNumber,    (uint32_t)0);
     TEST_EXPECT_EQ(s.RngState,      (uint64_t)0x123456789ABCDEF0ull);
-    TEST_EXPECT_EQ(s.Ball.Position.X.Raw, (int64_t)0);
+    // M12 fix: ctor now places the ball at the kickoff carrier (player 4, home CDM)
+    // so the game has someone with possession at kickoff (otherwise the AI stalls).
+    // Verify ball is co-located with the carrier rather than at origin.
+    TEST_EXPECT_EQ(s.Match.PossessionTeam,   (uint8_t)0);
+    TEST_EXPECT_EQ(s.Match.PossessionPlayer, (uint8_t)4);
+    TEST_EXPECT_EQ(s.Ball.Position.X.Raw, s.Players[4].Position.X.Raw);
+    TEST_EXPECT_EQ(s.Ball.Position.Y.Raw, s.Players[4].Position.Y.Raw);
     // All players are stationary after T1.5 (team/role/slot init; human binding in M9).
     TEST_EXPECT_EQ(s.Players[0].ControllerIndex, kStationaryController);
     TEST_EXPECT_EQ(s.Players[1].ControllerIndex, kStationaryController);

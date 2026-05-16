@@ -46,6 +46,15 @@ SimWorld::SimWorld(uint64_t rngSeed) {
         p.CurrentIntent    = 0;  // EIntent::HoldPosition (defined in M3)
         p.Flags            = 0;
     }
+
+    // Kickoff possession assignment. Without an initial carrier, EvaluateOnBall
+    // never fires, ball never moves, no possession changes hands — game stalls
+    // at kickoff. v0 grants the kickoff team's CDM (slot 4) initial possession
+    // and parks the ball at their feet. Match flow takes over from there.
+    constexpr int kKickoffCarrier = 4;   // home CDM (player 4) in default 4-3-3
+    State.Match.PossessionTeam   = 0;
+    State.Match.PossessionPlayer = (uint8_t)kKickoffCarrier;
+    State.Ball.Position          = State.Players[kKickoffCarrier].Position;
 }
 
 extern void StepPlayer(FSimPlayerState& p, const FInputFrame& frame, int playerIdx, const FMatchState& match);
