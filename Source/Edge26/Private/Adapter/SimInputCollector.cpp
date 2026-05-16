@@ -104,41 +104,42 @@ static USimHostSubsystem* HostFor(const UActorComponent* Self)
 	return World ? World->GetSubsystem<USimHostSubsystem>() : nullptr;
 }
 
-static int32 ControllerIndexOf(const UActorComponent* Self)
-{
-	if (!Self) return -1;
-	if (auto* F = Cast<AFootballerVisual>(Self->GetOwner())) return F->ControllerIndex;
-	return -1;
-}
+// Human input always routes to slot 0 in v0 (single local player).
+// The pawn-of-the-moment is decided sim-side by Match.HumanControlledIndex;
+// StepPlayer reads frame.Move[0] / frame.Buttons[0] for whoever that is.
+// Don't route via the visual's per-pawn ControllerIndex — auto-switch
+// changes the possessed pawn dynamically, and most pawns have ControllerIndex
+// >= 2, which SetMoveInput silently drops.
+static constexpr int32 kHumanInputSlot = 0;
 
 void USimInputCollector::OnMove(const FInputActionValue& Value)
 {
 	const FVector2D v = Value.Get<FVector2D>();
-	if (auto* H = HostFor(this)) H->SetMoveInput(ControllerIndexOf(this), v);
+	if (auto* H = HostFor(this)) H->SetMoveInput(kHumanInputSlot, v);
 }
 
 void USimInputCollector::OnSprint(const FInputActionValue&)
 {
-	if (auto* H = HostFor(this)) H->SetButton(ControllerIndexOf(this), 1 << 0, true);
+	if (auto* H = HostFor(this)) H->SetButton(kHumanInputSlot, 1 << 0, true);
 }
 void USimInputCollector::OnSprintReleased(const FInputActionValue&)
 {
-	if (auto* H = HostFor(this)) H->SetButton(ControllerIndexOf(this), 1 << 0, false);
+	if (auto* H = HostFor(this)) H->SetButton(kHumanInputSlot, 1 << 0, false);
 }
 void USimInputCollector::OnPass(const FInputActionValue&)
 {
-	if (auto* H = HostFor(this)) H->SetButton(ControllerIndexOf(this), 1 << 1, true);
+	if (auto* H = HostFor(this)) H->SetButton(kHumanInputSlot, 1 << 1, true);
 }
 void USimInputCollector::OnShoot(const FInputActionValue&)
 {
-	if (auto* H = HostFor(this)) H->SetButton(ControllerIndexOf(this), 1 << 2, true);
+	if (auto* H = HostFor(this)) H->SetButton(kHumanInputSlot, 1 << 2, true);
 }
 void USimInputCollector::OnChip(const FInputActionValue&)
 {
-	if (auto* H = HostFor(this)) H->SetButton(ControllerIndexOf(this), 1 << 3, true);
+	if (auto* H = HostFor(this)) H->SetButton(kHumanInputSlot, 1 << 3, true);
 }
 
 void USimInputCollector::OnSwitch(const FInputActionValue&)
 {
-	if (auto* H = HostFor(this)) H->SetButton(ControllerIndexOf(this), 1 << 4, true);
+	if (auto* H = HostFor(this)) H->SetButton(kHumanInputSlot, 1 << 4, true);
 }
