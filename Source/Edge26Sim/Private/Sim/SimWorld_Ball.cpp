@@ -103,7 +103,7 @@ void MaybeApplyKick(FSimBallState& b, FSimPlayerState& p, const FInputFrame& fra
         if (p.IntendedPassTarget < (uint8_t)kSimPlayerCount) {
             FixedVec3 toMate = state.Players[p.IntendedPassTarget].Position - p.Position;
             Fixed64 d = SimMath::Sqrt(toMate.X * toMate.X + toMate.Y * toMate.Y);
-            if (d.Raw > 0) {
+            if (d.Raw > kMinDistCm.Raw) {
                 // Normalize: divide Fixed64 by Fixed64 using operator/ (uses __int128 internally).
                 dir.X = toMate.X / d;
                 dir.Y = toMate.Y / d;

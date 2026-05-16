@@ -76,7 +76,10 @@ static Fixed32 PassSuccessProbability(FixedVec3 from, FixedVec3 to,
 {
     FixedVec3 seg = to - from;
     Fixed64   segLenSq = seg.X * seg.X + seg.Y * seg.Y;
-    if (segLenSq.Raw <= 0) return Fixed32::FromRaw(Fixed32::One);   // zero-length: trivially "succeeds"
+    // Fix 1d: epsilon-clamp — skip blocker projection when segment is near-zero
+    // (prevents __int128 divide by near-zero in the projLenSq calculation below).
+    const Fixed64 kMinSegSq = kMinDistCm * kMinDistCm;
+    if (segLenSq.Raw <= kMinSegSq.Raw) return Fixed32::FromRaw(Fixed32::One);   // near-zero length: trivially "succeeds"
 
     // 1.5m = 150 cm
     const Fixed64 kBlockerRadius = Fixed64::FromInt(150);

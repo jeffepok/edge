@@ -57,7 +57,7 @@ SimWorld::SimWorld(uint64_t rngSeed) {
     State.Ball.Position          = State.Players[kKickoffCarrier].Position;
 }
 
-extern void StepPlayer(FSimPlayerState& p, const FInputFrame& frame, int playerIdx, const FMatchState& match);
+extern void StepPlayer(FSimPlayerState& p, const FInputFrame& frame, int playerIdx, const FSimWorldState& state);
 extern void StepBall(FSimBallState& b);
 extern void MaybeApplyKick(FSimBallState& b, FSimPlayerState& p, const FInputFrame& frame,
                            FSimWorldState& state, int playerIdx);
@@ -122,13 +122,36 @@ static void UpdatePossession(FSimWorldState& s)
         return;
     }
 
+    // Fix 4: Possession hysteresis — the current carrier keeps possession while
+    // still within the wider RELEASE radius. This prevents rapid carrier-index
+    // thrashing when 3+ players cluster inside the 80 cm pickup radius, which
+    // caused PendingButtons / kick impulses to conflict tick-to-tick.
+    const Fixed64 kPickupRadius  = Fixed64::FromInt(80);    // 80 cm  (acquire)
+    const Fixed64 kReleaseRadius = Fixed64::FromInt(120);   // 120 cm (release — wider)
+    const Fixed64 kPickupRSq     = kPickupRadius  * kPickupRadius;
+    const Fixed64 kReleaseRSq    = kReleaseRadius * kReleaseRadius;
+    constexpr int64_t kMaxDelta  = (int64_t)15000 << 32;   // 15000 cm in Q32.32
+
+    if (s.Match.PossessionPlayer < (uint8_t)kSimPlayerCount) {
+        const FSimPlayerState& cur = s.Players[s.Match.PossessionPlayer];
+        Fixed64 cdx = cur.Position.X - s.Ball.Position.X;
+        Fixed64 cdy = cur.Position.Y - s.Ball.Position.Y;
+        if (cdx.Raw >  kMaxDelta) cdx.Raw =  kMaxDelta;
+        if (cdx.Raw < -kMaxDelta) cdx.Raw = -kMaxDelta;
+        if (cdy.Raw >  kMaxDelta) cdy.Raw =  kMaxDelta;
+        if (cdy.Raw < -kMaxDelta) cdy.Raw = -kMaxDelta;
+        Fixed64 cDsq = cdx * cdx + cdy * cdy;
+        if (cDsq.Raw <= kReleaseRSq.Raw) {
+            // Current carrier still has the ball — no change needed.
+            return;
+        }
+        // Carrier has left the release radius — fall through to nearest-player logic.
+    }
+
     // Nearest outfield player within pickup radius gains possession.
-    const Fixed64 kPickupRadius = Fixed64::FromInt(80);   // 80 cm
-    const Fixed64 kPickupRSq    = kPickupRadius * kPickupRadius;
     int   bestIdx = -1;
     Fixed64 bestSq = kPickupRSq;
     // Clamp deltas before squaring to prevent overflow (same pattern as EvaluateOffBall).
-    constexpr int64_t kMaxDelta = (int64_t)15000 << 32;  // 15000 cm in Q32.32
     for (int i = 0; i < kSimPlayerCount; ++i) {
         const auto& p = s.Players[i];
         Fixed64 dx = p.Position.X - s.Ball.Position.X;
@@ -210,7 +233,7 @@ void SimWorld::Step(const FInputFrame& frame) {
 
     // Player updates in ascending index order (deterministic).
     for (int i = 0; i < kSimPlayerCount; ++i) {
-        StepPlayer(State.Players[i], frame, i, State.Match);
+        StepPlayer(State.Players[i], frame, i, State);
     }
     // Kicks resolved in ascending player index for deterministic order.
     for (int i = 0; i < kSimPlayerCount; ++i) {
