@@ -76,6 +76,25 @@ void StepBall(FSimBallState& b) {
     } else {
         b.Flags &= ~BallFlag::Grounded;
     }
+
+    // Touchline / byline bounds. v0 doesn't model throws or corners — when
+    // the ball reaches a touchline, stop it. UpdatePossession sees the ball
+    // out-of-bounds and clears possession; a future Set-Pieces milestone
+    // will replace this with a proper restart.
+    if (b.Position.X.Raw >  SimConst::PitchHalfLen.Raw) {
+        b.Position.X = SimConst::PitchHalfLen;
+        b.Velocity.X = Fixed64::FromRaw(0);
+    } else if (b.Position.X.Raw < -SimConst::PitchHalfLen.Raw) {
+        b.Position.X = Fixed64::FromRaw(-SimConst::PitchHalfLen.Raw);
+        b.Velocity.X = Fixed64::FromRaw(0);
+    }
+    if (b.Position.Y.Raw >  SimConst::PitchHalfWid.Raw) {
+        b.Position.Y = SimConst::PitchHalfWid;
+        b.Velocity.Y = Fixed64::FromRaw(0);
+    } else if (b.Position.Y.Raw < -SimConst::PitchHalfWid.Raw) {
+        b.Position.Y = Fixed64::FromRaw(-SimConst::PitchHalfWid.Raw);
+        b.Velocity.Y = Fixed64::FromRaw(0);
+    }
 }
 
 void MaybeApplyKick(FSimBallState& b, FSimPlayerState& p, const FInputFrame& frame,

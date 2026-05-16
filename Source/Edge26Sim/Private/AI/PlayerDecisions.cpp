@@ -423,6 +423,10 @@ static void EvaluateOnBall(FSimPlayerState& p, const FSimWorldState& s,
 }
 
 void UpdatePlayerAI(FSimPlayerState& p, const FSimWorldState& s, int playerIdx) {
+    // Snapshot previous tick's intent + target for hysteresis (below).
+    const EIntent   prevIntent = (EIntent)p.CurrentIntent;
+    const FixedVec3 prevTarget = p.AITargetPosition;
+
     // Reset per-tick synthetic buttons (carrier may set them below).
     p.PendingButtons = 0;
 
@@ -437,6 +441,31 @@ void UpdatePlayerAI(FSimPlayerState& p, const FSimWorldState& s, int playerIdx) 
         EvaluateOnBall (p, s, W, playerIdx, bestIntent, bestTarget, bestScore);
     } else {
         EvaluateOffBall(p, s, W, playerIdx, bestIntent, bestTarget, bestScore);
+    }
+
+    // Intent hysteresis: when the new intent differs from last tick's but its
+    // target is essentially the same (within 2 m), keep the previous intent.
+    // Dampens the per-tick flicker observed near boundaries (e.g., midfield
+    // line) where MakeRunForward / DropToReceive scores oscillate by a hair.
+    if (bestIntent != prevIntent) {
+        FixedVec3 dt = bestTarget - prevTarget;
+        Fixed64 dx = dt.X, dy = dt.Y;
+        // Saturation clamp to prevent Fixed64 overflow when targets are
+        // pathologically far apart (e.g., one team's slot vs the other's).
+        const Fixed64 kClamp = Fixed64::FromInt(15000);
+        if (dx.Raw >  kClamp.Raw) dx = kClamp;
+        if (dx.Raw < -kClamp.Raw) dx.Raw = -kClamp.Raw;
+        if (dy.Raw >  kClamp.Raw) dy = kClamp;
+        if (dy.Raw < -kClamp.Raw) dy.Raw = -kClamp.Raw;
+        Fixed64 deltaSq = dx * dx + dy * dy;
+        const Fixed64 kHystDelta = Fixed64::FromInt(200);     // 2 m deadzone
+        const Fixed64 kHystDeltaSq = kHystDelta * kHystDelta;
+        if (deltaSq.Raw < kHystDeltaSq.Raw) {
+            // New target is within the deadzone of the prev target — stay
+            // on the prev intent to avoid label flicker.
+            bestIntent = prevIntent;
+            bestTarget = prevTarget;
+        }
     }
 
     p.CurrentIntent    = (uint8_t)bestIntent;
