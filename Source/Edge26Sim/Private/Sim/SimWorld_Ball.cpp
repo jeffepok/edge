@@ -97,6 +97,17 @@ void MaybeApplyKick(FSimBallState& b, FSimPlayerState& p, const FInputFrame& fra
     Fixed64 reachSq = SimConst::KickReach * SimConst::KickReach;
     if (distSq.Raw > reachSq.Raw) return;
 
+    // Re-kick lockout: if the ball is already moving fast (just kicked by
+    // someone else, or by this carrier on a prior tick), skip. Otherwise
+    // multiple players in a clump each "kick" the still-near ball every
+    // tick with potentially-different intent directions, causing it to
+    // teleport / vibrate. 500 cm/s = 5 m/s — well below a fresh pass
+    // (15 m/s) but above the noise of a settling/rolling ball.
+    Fixed64 ballSpeedSq = b.Velocity.X * b.Velocity.X + b.Velocity.Y * b.Velocity.Y;
+    const Fixed64 kBallStationaryThresholdSq =
+        Fixed64::FromInt(500) * Fixed64::FromInt(500);
+    if (ballSpeedSq.Raw > kBallStationaryThresholdSq.Raw) return;
+
     FixedVec3 dir;
     // Pass: aim at intended target if set, else fall back to heading.
     if (buttons & InputButton::Pass) {

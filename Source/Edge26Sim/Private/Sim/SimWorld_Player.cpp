@@ -89,7 +89,6 @@ void StepPlayer(FSimPlayerState& p, const FInputFrame& frame, int playerIdx, con
         {
             const Fixed64 kSepRadius   = Fixed64::FromInt(80);   // 80 cm ≈ 2 player widths
             const Fixed64 kSepRSq      = kSepRadius * kSepRadius;
-            const Fixed64 kSepStrength = SimConst::JogSpeed;     // strong push at zero distance
             const Fixed64 kSatClamp    = Fixed64::FromInt(15000);
             FixedVec3 separation       = FixedVec3::Zero();
 
@@ -106,12 +105,22 @@ void StepPlayer(FSimPlayerState& p, const FInputFrame& frame, int playerIdx, con
                 Fixed64 dSq = ox * ox + oy * oy;
                 if (dSq.Raw >= kSepRSq.Raw) continue;  // outside separation radius
                 Fixed64 d = SimMath::Sqrt(dSq);
-                if (d.Raw < kMinDistCm.Raw) continue;  // exact/near overlap — skip (Fix 1 handles it)
+                if (d.Raw < kMinDistCm.Raw) {
+                    // Exact overlap — pick a deterministic perpendicular offset
+                    // based on the index difference so two stacked players
+                    // separate instead of co-locating forever. Magnitude = full
+                    // sprint speed so they un-stick within a tick.
+                    int sign = ((playerIdx - j) & 1) ? 1 : -1;
+                    separation.X = separation.X + Fixed64::FromInt(sign) * SimConst::SprintSpeed;
+                    separation.Y = separation.Y + Fixed64::FromInt(-sign) * SimConst::SprintSpeed;
+                    continue;
+                }
                 // Push proportional to (1 - d/radius) in the direction away from other.
-                // strength = kSepStrength * (kSepRadius - d) / kSepRadius.
-                // Use raw int64 for the scale ratio to avoid a Fixed64/Fixed64 chain.
+                // Boosted strength (3× SprintSpeed) so separation wins decisively
+                // over the attraction-to-target velocity at tight overlaps.
+                const Fixed64 kSepStrongPush = SimConst::SprintSpeed * Fixed64::FromInt(3);
                 int64_t scaleRaw = ((kSepRadius.Raw - d.Raw) << 32) / kSepRadius.Raw;  // SIM-LINT-OK: single raw ratio, same pattern as PassSuccessProbability
-                Fixed64 strength = Fixed64::FromRaw(scaleRaw) * kSepStrength;
+                Fixed64 strength = Fixed64::FromRaw(scaleRaw) * kSepStrongPush;
                 separation.X = separation.X + (ox / d) * strength;
                 separation.Y = separation.Y + (oy / d) * strength;
             }

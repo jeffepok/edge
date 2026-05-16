@@ -7,6 +7,7 @@
 #include "GameFramework/PlayerController.h"
 #include "AI/Formations.h"
 #include "AI/Switching.h"
+#include "Camera/BroadcastCamera.h"
 #include <cstring>
 
 using namespace edge26;
@@ -44,17 +45,31 @@ void USimHostSubsystem::Tick(float DeltaTime)
 		CurrentInput.Buttons[0] &= (uint8)~kOneShotMask;
 
 		// M9: re-Possess the right pawn when the sim's HumanControlledIndex changes.
+		// Note: PC->Possess sets the view target to the new pawn's camera, which
+		// fights the BroadcastCamera. Detect a broadcast camera in the world and,
+		// when one is active, skip the Possess call entirely — the sim still
+		// knows who the human is, input still routes via slot 0, and the camera
+		// stays anchored on the broadcast view for observation.
 		const uint8 idxNow = (uint8)Sim->GetState().Match.HumanControlledIndex;
 		if (idxNow != LastHumanControlledIndex && idxNow != 0xFF)
 		{
-			if (auto* PC = GetWorld()->GetFirstPlayerController())
+			bool bBroadcastActive = false;
+			for (TActorIterator<ABroadcastCamera> It(GetWorld()); It; ++It)
 			{
-				for (TActorIterator<AFootballerVisual> It(GetWorld()); It; ++It)
+				bBroadcastActive = true;
+				break;
+			}
+			if (!bBroadcastActive)
+			{
+				if (auto* PC = GetWorld()->GetFirstPlayerController())
 				{
-					if ((uint8)It->ControllerIndex == idxNow)
+					for (TActorIterator<AFootballerVisual> It(GetWorld()); It; ++It)
 					{
-						PC->Possess(*It);
-						break;
+						if ((uint8)It->ControllerIndex == idxNow)
+						{
+							PC->Possess(*It);
+							break;
+						}
 					}
 				}
 			}
