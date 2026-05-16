@@ -625,12 +625,18 @@ TEST_CASE(Sim_OffsideFlagAndResolve) {
     w.Step(f);
     TEST_EXPECT_EQ(st.Match.PendingOffsideCallTeam, (uint8_t)1);
 
-    // Tick ~35 more times — flag should resolve and home defender should have ball.
+    // Tick until grace expires (30 ticks from tick 1 → resolves at tick 31).
+    // Clear the pass button so it doesn't re-fire on subsequent ticks.
+    f.Buttons[0] = 0;
     for (int t = 2; t < 40; ++t) {
         f.TickNumber = (uint32_t)t;
         w.Step(f);
+        // Stop as soon as the flag clears — check possession in the same tick.
+        if (st.Match.PendingOffsideCallTeam == (uint8_t)0xFF) break;
     }
     TEST_EXPECT_EQ(st.Match.PendingOffsideCallTeam, (uint8_t)0xFF);
+    // Home team must have possession right at the tick the offside call resolves
+    // (before AI can move the receiving defender away from the ball).
     TEST_EXPECT_EQ(st.Match.PossessionTeam, (uint8_t)0);
     return 0;
 }

@@ -24,8 +24,9 @@ void UpdateDefensiveUnit(FUnitState& u, FSimWorldState& s, int teamId) {
     // Average X of CBs + FBs (X is up-pitch in our frame).
     Fixed64 sumX        = Fixed64::FromInt(0);
     int     countX      = 0;
-    Fixed64 maxXForward = Fixed64::FromInt(-99999999) * SignForTeam(teamId);
-    int     lastDefIdx  = -1;
+    // Start at +99999999 in signed-forward space so any real defender is closer to own goal.
+    Fixed64 minXForward = Fixed64::FromInt(99999999);
+    int     rearDefIdx  = -1;
 
     for (int i = 0; i < kSimPlayerCount; ++i) {
         const auto& p = s.Players[i];
@@ -34,12 +35,11 @@ void UpdateDefensiveUnit(FUnitState& u, FSimWorldState& s, int teamId) {
         if (p.RoleId == (uint8_t)ERole::GK) continue;
         sumX = sumX + p.Position.X;
         ++countX;
-        // Find last defender (furthest from their own goal = highest signed forward).
-        Fixed64 forward     = p.Position.X * SignForTeam(teamId);
-        Fixed64 bestForward = maxXForward  * SignForTeam(teamId);
-        if (forward.Raw > bestForward.Raw) {
-            maxXForward = p.Position.X;
-            lastDefIdx  = i;
+        // Find rearmost outfield defender (closest to own goal = lowest signed forward).
+        Fixed64 forward = p.Position.X * SignForTeam(teamId);
+        if (forward.Raw < minXForward.Raw) {
+            minXForward = forward;
+            rearDefIdx  = i;
         }
     }
     if (countX > 0) {
@@ -51,12 +51,12 @@ void UpdateDefensiveUnit(FUnitState& u, FSimWorldState& s, int teamId) {
         u.LineY = u.LineY + bias * SignForTeam(teamId);
     }
 
-    // OffsideLineY = max-forward defender's X OR ball X, whichever is closer to
-    // their own goal (standard offside rule: use the less-advanced of the two).
+    // OffsideLineY = rearmost outfield defender's X OR ball X, whichever is closer to
+    // their own goal (standard offside rule: second-last opponent pins the line).
     Fixed64 ballX = s.Ball.Position.X;
-    if (lastDefIdx >= 0) {
-        Fixed64 a = maxXForward * SignForTeam(teamId);   // signed forward coord of last def
-        Fixed64 b = ballX       * SignForTeam(teamId);   // signed forward coord of ball
+    if (rearDefIdx >= 0) {
+        Fixed64 a = minXForward;                         // signed forward coord of rearmost def
+        Fixed64 b = ballX * SignForTeam(teamId);         // signed forward coord of ball
         // Choose the one closer to own goal (lower signed-forward value).
         Fixed64 lineForward = (a.Raw < b.Raw) ? a : b;
         // Convert back to absolute X: multiply signed-forward by sign.

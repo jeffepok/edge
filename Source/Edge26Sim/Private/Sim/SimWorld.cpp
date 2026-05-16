@@ -143,6 +143,11 @@ static void UpdatePossession(FSimWorldState& s)
     if (bestIdx >= 0) {
         s.Match.PossessionPlayer = (uint8_t)bestIdx;
         s.Match.PossessionTeam   = s.Players[bestIdx].TeamId;
+    } else {
+        // Ball is loose mid-flight — no one within pickup radius. Clear stale
+        // possession so AI doesn't keep evaluating on-ball for the prior carrier.
+        s.Match.PossessionTeam   = 0xFF;
+        s.Match.PossessionPlayer = 0xFF;
     }
 }
 
