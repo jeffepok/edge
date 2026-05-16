@@ -85,14 +85,14 @@ void ASoccerGameMode::ResetForKickoff()
 
 	// M1: place all 22 players at 4-3-3 slots (replaces PlayerStart iteration).
 	Host->ResetAllPlayersTo4_3_3();
-	// M12 fix: assign initial possession to the AWAY team's CDM (player 15)
-	// and park the ball at their feet. The user controls the nearest HOME
-	// outfielder (auto-picked by ChooseHumanControlled). Putting possession
-	// on the AI team at kickoff lets the user OBSERVE AI off-ball behaviour
-	// immediately — the away CDM auto-passes/dribbles, home AI presses +
-	// tracks, possession changes hands organically. Without this, kickoff
-	// stalls (no carrier within KickReach of ball).
-	Host->ResetBallAtCarrier(/*TeamId=*/1, /*PlayerIndex=*/15);
+	// M12 fix: assign initial possession to the AWAY team's CDM (player 16,
+	// slot 5) and park the ball at their feet. The user controls the nearest
+	// HOME outfielder (auto-picked by ChooseHumanControlled). Putting
+	// possession on the AI team at kickoff lets the user OBSERVE AI off-ball
+	// behaviour immediately — the away CDM auto-passes/dribbles, home AI
+	// presses + tracks, possession changes hands organically. Without this,
+	// kickoff stalls (no carrier within KickReach of ball).
+	Host->ResetBallAtCarrier(/*TeamId=*/1, /*PlayerIndex=*/16);
 }
 
 void ASoccerGameMode::EndKickoff()

@@ -29,24 +29,6 @@ void USimHostSubsystem::Deinitialize()
 void USimHostSubsystem::Tick(float DeltaTime)
 {
 	if (!Sim) return;
-
-	// M12: apply kickoff state once, on the first tick after all visuals
-	// have registered. We do this here (not in ASoccerGameMode::ResetForKickoff)
-	// because BP_SoccerGameMode subclasses can override StartPlay without
-	// calling Super, silently dropping the kickoff setup.
-	if (!bKickoffApplied)
-	{
-		// Snap players to slot positions (visuals were placed roughly, but the
-		// sim wants exact formation slots).
-		ResetAllPlayersTo4_3_3();
-		// Hand kickoff possession to away CDM (player 16) — observable AI play.
-		// Player 16 = slot 5 (CDM), away team. Slot 4 is FB_R; spec mistakenly
-		// labelled the kickoff carrier "CDM" while pointing at index 4 (which
-		// is FB_R). Use 16 for the correct CDM kickoff.
-		ResetBallAtCarrier(/*TeamId=*/1, /*PlayerIndex=*/16);
-		bKickoffApplied = true;
-	}
-
 	Accumulator += DeltaTime;
 	int safetyCap = 5;
 	while (Accumulator >= TickDuration && safetyCap-- > 0)

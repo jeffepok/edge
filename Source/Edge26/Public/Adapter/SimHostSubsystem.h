@@ -71,10 +71,4 @@ private:
 
 	// M9: tracks last sim HumanControlledIndex to detect changes and re-Possess.
 	uint8 LastHumanControlledIndex = 0xFF;
-
-	// M12: kickoff is applied exactly once after all visuals have registered.
-	// Done in SimHostSubsystem (not GameMode) because BP_SoccerGameMode subclasses
-	// often override StartPlay without calling Super, so any GameMode-side kickoff
-	// hook is unreliable. Setting this on the first sim tick guarantees it runs.
-	bool bKickoffApplied = false;
 };
