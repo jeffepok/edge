@@ -116,7 +116,14 @@ void USimHostSubsystem::RegisterFootballer(AFootballerVisual* Pawn, int32 Contro
 	if (Sim && ControllerIndex >= 0 && ControllerIndex < edge26::kSimPlayerCount)
 	{
 		auto& P = Sim->MutableState().Players[ControllerIndex];
-		P.ControllerIndex = (uint8)ControllerIndex;
+		// Visuals carry their identity (0..21). The sim's ControllerIndex was
+		// a Phase 1 concept (which input slot to read); in Phase 2 it's vestigial
+		// — the human is determined by Match.HumanControlledIndex, and AI players
+		// have no input slot. Keep sim's ControllerIndex as the slot id only for
+		// indices 0-1 (the two reachable input slots in v0).
+		P.ControllerIndex = (ControllerIndex < 2)
+		    ? (uint8)ControllerIndex
+		    : edge26::kStationaryController;
 		// Seed sim position from where the actor was placed in the level — otherwise
 		// the next tick teleports the visual to (0,0,0) and it disappears below the floor.
 		const FVector Loc = Pawn->GetActorLocation();

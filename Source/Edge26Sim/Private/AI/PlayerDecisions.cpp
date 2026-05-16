@@ -277,8 +277,10 @@ static void EvaluateOffBall(FSimPlayerState& p, const FSimWorldState& s,
     if (p.RoleId == (uint8_t)ERole::CB || p.RoleId == (uint8_t)ERole::FB_L
         || p.RoleId == (uint8_t)ERole::FB_R)
     {
-        FixedVec3 target { p.Position.X,
-                           s.Match.Units[p.TeamId][0].LineY,   // [0] = Defense unit
+        // Units[].LineY actually stores the up-pitch X coordinate (legacy naming
+        // from spec §4); on our X-is-up-pitch convention, that's the X axis.
+        FixedVec3 target { s.Match.Units[p.TeamId][0].LineY,
+                           p.Position.Y,
                            Fixed64::FromInt(0) };
         Fixed32 score = W.HoldDefensiveLine;
         if (score.Raw > bestScore.Raw) {

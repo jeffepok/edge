@@ -2,6 +2,7 @@
 #include "Sim/SimWorld.h"
 #include "Sim/Constants.h"
 #include "Sim/InputFrame.h"
+#include "Sim/MatchState.h"
 #include "Math/Hash.h"
 #include "AI/Formations.h"
 #include "AI/Roles.h"
@@ -47,7 +48,7 @@ SimWorld::SimWorld(uint64_t rngSeed) {
     }
 }
 
-extern void StepPlayer(FSimPlayerState& p, const FInputFrame& frame);
+extern void StepPlayer(FSimPlayerState& p, const FInputFrame& frame, int playerIdx, const FMatchState& match);
 extern void StepBall(FSimBallState& b);
 extern void MaybeApplyKick(FSimBallState& b, FSimPlayerState& p, const FInputFrame& frame,
                            FSimWorldState& state, int playerIdx);
@@ -186,9 +187,9 @@ void SimWorld::Step(const FInputFrame& frame) {
         }
     }
 
-    // Player updates in ascending ControllerIndex order (deterministic).
+    // Player updates in ascending index order (deterministic).
     for (int i = 0; i < kSimPlayerCount; ++i) {
-        StepPlayer(State.Players[i], frame);
+        StepPlayer(State.Players[i], frame, i, State.Match);
     }
     // Kicks resolved in ascending player index for deterministic order.
     for (int i = 0; i < kSimPlayerCount; ++i) {
