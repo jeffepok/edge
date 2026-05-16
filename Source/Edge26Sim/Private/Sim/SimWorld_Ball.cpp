@@ -14,7 +14,10 @@ static uint16_t ResolveButtonsForPlayer(const FInputFrame& frame,
                                         const FMatchState& m,
                                         int playerIdx)
 {
-    if ((uint8_t)playerIdx == m.HumanControlledIndex) return (uint16_t)frame.Buttons[p.ControllerIndex];
+    // Human input is always in slot 0 (single local player in v0).
+    // The human's pawn-of-the-moment is identified by HumanControlledIndex;
+    // their ControllerIndex field is vestigial post-M9.
+    if ((uint8_t)playerIdx == m.HumanControlledIndex) return (uint16_t)frame.Buttons[0];
     return (uint16_t)p.PendingButtons;
 }
 
@@ -73,11 +76,9 @@ void StepBall(FSimBallState& b) {
 void MaybeApplyKick(FSimBallState& b, FSimPlayerState& p, const FInputFrame& frame,
                     FSimWorldState& state, int playerIdx)
 {
-    // Human players must have a bound controller; AI players use PendingButtons.
-    // If this is a human player with no controller bound (kStationaryController), skip.
-    if ((uint8_t)playerIdx == state.Match.HumanControlledIndex
-        && p.ControllerIndex == kStationaryController) return;
-
+    // Phase 2: every player (human and AI alike) can fire a kick.
+    // Human input slot is always 0; AI players use their PendingButtons cache.
+    // ResolveButtonsForPlayer encapsulates the per-player routing.
     uint16_t buttons = ResolveButtonsForPlayer(frame, p, state.Match, playerIdx);
 
     Fixed64 speed, lift;

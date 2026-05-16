@@ -47,6 +47,11 @@ public:
 	// Iterates the sim state and writes both sim state AND visual actor transforms.
 	void ResetAllPlayersTo4_3_3();
 
+	// M12: place ball at the given player's feet and grant them possession.
+	// Also nominates that player as the human at kickoff. Used by ResetForKickoff
+	// to bootstrap on-ball AI evaluation.
+	void ResetBallAtCarrier(int32 TeamId, int32 PlayerIndex);
+
 private:
 	void DriveVisuals(float Alpha);
 

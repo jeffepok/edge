@@ -6,6 +6,7 @@
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
 #include "AI/Formations.h"
+#include "AI/Switching.h"
 #include <cstring>
 
 using namespace edge26;
@@ -185,6 +186,27 @@ void USimHostSubsystem::ResetBall(FVector WorldPos)
 	BallState.AngularVelocity = edge26::FixedVec3::Zero();
 	BallState.Flags = 0;
 	// Sync interp cache so visuals don't lerp from the pre-reset position.
+	Sim->Snapshot(CurrState);
+	PrevState = CurrState;
+}
+
+void USimHostSubsystem::ResetBallAtCarrier(int32 TeamId, int32 PlayerIndex)
+{
+	if (!Sim) return;
+	if (PlayerIndex < 0 || PlayerIndex >= edge26::kSimPlayerCount) return;
+	auto& State = Sim->MutableState();
+	State.Ball.Position = State.Players[PlayerIndex].Position;
+	State.Ball.Velocity = edge26::FixedVec3::Zero();
+	State.Ball.AngularVelocity = edge26::FixedVec3::Zero();
+	State.Ball.Flags = 0;
+	State.Match.PossessionTeam   = (uint8_t)TeamId;
+	State.Match.PossessionPlayer = (uint8_t)PlayerIndex;
+	// Human (always team 0 in v0) controls the nearest home outfielder to the
+	// ball. ChooseHumanControlled would do this on next tick, but pin it now
+	// so the manual-switch-cooldown-suppressed first 25 ticks have a sensible
+	// focus even when the carrier is on the away team.
+	int humanIdx = edge26::ChooseHumanControlled(State, 0);
+	if (humanIdx >= 0) State.Match.HumanControlledIndex = (uint8_t)humanIdx;
 	Sim->Snapshot(CurrState);
 	PrevState = CurrState;
 }
