@@ -52,6 +52,9 @@ public:
 	// to bootstrap on-ball AI evaluation.
 	void ResetBallAtCarrier(int32 TeamId, int32 PlayerIndex);
 
+	// Sync UE5-side score into the sim so Layer A team-strategy reads the real score.
+	void SetMatchScore(uint8 TeamId, uint16 NewScore);
+
 private:
 	void DriveVisuals(float Alpha);
 

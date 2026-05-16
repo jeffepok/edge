@@ -28,7 +28,12 @@ void UEdge26CheatManager::edge26_ai_show_field(const FString& Field)
 
 void UEdge26CheatManager::edge26_ai_team_perspective(int32 Team)
 {
-    if (auto* R = FindRenderer(GetWorld())) R->TeamPerspective = Team;
+    if (auto* R = FindRenderer(GetWorld()))
+    {
+        if (Team < -1) Team = -1;
+        if (Team >  1) Team =  1;
+        R->TeamPerspective = Team;
+    }
 }
 
 void UEdge26CheatManager::edge26_ai_intent_arrows(int32 On)

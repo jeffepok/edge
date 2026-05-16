@@ -60,6 +60,11 @@ void ASoccerGameMode::RegisterGoal(int32 ScoringTeam)
 	}
 
 	Scores[ScoringTeam]++;
+	// Sync to sim so Layer A team-strategy sees the new score.
+	if (USimHostSubsystem* Host = GetWorld() ? GetWorld()->GetSubsystem<USimHostSubsystem>() : nullptr)
+	{
+		Host->SetMatchScore((uint8)ScoringTeam, (uint16)Scores[ScoringTeam]);
+	}
 	UE_LOG(LogEdge26, Log, TEXT("Score: Home %d - %d Away"), Scores[0], Scores[1]);
 	OnGoalScored.Broadcast(ScoringTeam, Scores[ScoringTeam]);
 

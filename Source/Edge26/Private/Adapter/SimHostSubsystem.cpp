@@ -38,6 +38,11 @@ void USimHostSubsystem::Tick(float DeltaTime)
 		Sim->Step(CurrentInput);
 		Sim->Snapshot(CurrState);
 
+		// Clear one-shot bits after consumption so they don't latch across ticks.
+		// Sprint (1<<0) is held by design — leave it alone.
+		constexpr uint8 kOneShotMask = (1<<1) | (1<<2) | (1<<3) | (1<<4); // Pass, Shoot, Chip, Switch
+		CurrentInput.Buttons[0] &= (uint8)~kOneShotMask;
+
 		// M9: re-Possess the right pawn when the sim's HumanControlledIndex changes.
 		const uint8 idxNow = (uint8)Sim->GetState().Match.HumanControlledIndex;
 		if (idxNow != LastHumanControlledIndex && idxNow != 0xFF)
@@ -224,6 +229,12 @@ void USimHostSubsystem::ResetPlayer(int32 ControllerIndex, FVector WorldPos, FRo
 	P.FacingTarget = P.Heading;
 	Sim->Snapshot(CurrState);
 	PrevState = CurrState;
+}
+
+void USimHostSubsystem::SetMatchScore(uint8 TeamId, uint16 NewScore)
+{
+	if (!Sim || TeamId > 1) return;
+	Sim->MutableState().Match.Score[TeamId] = NewScore;
 }
 
 void USimHostSubsystem::ResetAllPlayersTo4_3_3()

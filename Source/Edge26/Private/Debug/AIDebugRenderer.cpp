@@ -34,7 +34,7 @@ void AAIDebugRenderer::Tick(float DeltaSeconds)
     // --- Heatmap ---
     if (ActiveField != ESpatialFieldDebug::None)
     {
-        const int teamPick = (TeamPerspective < 0) ? 0 : TeamPerspective;
+        const int teamPick = (TeamPerspective < 0) ? 0 : (TeamPerspective > 1 ? 1 : TeamPerspective);
         const int fieldIdx = (int)ActiveField - 1;   // None=0 in enum → shift
         const auto& cells = s.Spatial.Cells[teamPick][fieldIdx];
 
