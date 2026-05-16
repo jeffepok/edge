@@ -5,6 +5,7 @@
 #include "Adapter/FootballerVisual.h"
 #include "Adapter/SimHostSubsystem.h"
 #include "Adapter/SoccerBallVisual.h"
+#include "Camera/BroadcastCamera.h"
 #include "EngineUtils.h"
 #include "Game/SoccerHUD.h"
 #include "GameFramework/PlayerStart.h"
@@ -30,6 +31,27 @@ void ASoccerGameMode::StartPlay()
 	MatchClock = MatchDurationSeconds;
 	SetPhase(EMatchPhase::Kickoff);
 	ResetForKickoff();
+
+	// M12 PIE soak: auto-spawn a tele-broadcast camera if one isn't placed in
+	// the level. The camera asserts itself as the PC's view target each tick,
+	// so the user sees the whole pitch instead of being stuck behind whichever
+	// pawn auto-switch happens to possess.
+	bool bHasCamera = false;
+	for (TActorIterator<ABroadcastCamera> It(GetWorld()); It; ++It) { bHasCamera = true; break; }
+	if (!bHasCamera)
+	{
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		ABroadcastCamera* Cam = GetWorld()->SpawnActor<ABroadcastCamera>(
+			ABroadcastCamera::StaticClass(),
+			FVector(0.0f, -4500.0f, 2500.0f),
+			FRotator::ZeroRotator,
+			Params);
+		if (Cam)
+		{
+			UE_LOG(LogEdge26, Log, TEXT("Auto-spawned BroadcastCamera."));
+		}
+	}
 
 	GetWorldTimerManager().SetTimer(KickoffStartHandle, this, &ASoccerGameMode::EndKickoff, 1.5f, false);
 }
