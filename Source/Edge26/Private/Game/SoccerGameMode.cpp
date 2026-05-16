@@ -5,11 +5,15 @@
 #include "Adapter/FootballerVisual.h"
 #include "Adapter/SimHostSubsystem.h"
 #include "Adapter/SoccerBallVisual.h"
+#include "Camera/BroadcastCamera.h"
 #include "EngineUtils.h"
 #include "Game/SoccerHUD.h"
 #include "GameFramework/PlayerStart.h"
 #include "TimerManager.h"
 #include "Edge26.h"
+#if !UE_BUILD_SHIPPING
+#include "Debug/Edge26CheatManager.h"
+#endif
 
 ASoccerGameMode::ASoccerGameMode()
 {
@@ -27,6 +31,27 @@ void ASoccerGameMode::StartPlay()
 	MatchClock = MatchDurationSeconds;
 	SetPhase(EMatchPhase::Kickoff);
 	ResetForKickoff();
+
+	// M12 PIE soak: auto-spawn a tele-broadcast camera if one isn't placed in
+	// the level. The camera asserts itself as the PC's view target each tick,
+	// so the user sees the whole pitch instead of being stuck behind whichever
+	// pawn auto-switch happens to possess.
+	bool bHasCamera = false;
+	for (TActorIterator<ABroadcastCamera> It(GetWorld()); It; ++It) { bHasCamera = true; break; }
+	if (!bHasCamera)
+	{
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		ABroadcastCamera* Cam = GetWorld()->SpawnActor<ABroadcastCamera>(
+			ABroadcastCamera::StaticClass(),
+			FVector(0.0f, -4500.0f, 2500.0f),
+			FRotator::ZeroRotator,
+			Params);
+		if (Cam)
+		{
+			UE_LOG(LogEdge26, Log, TEXT("Auto-spawned BroadcastCamera."));
+		}
+	}
 
 	GetWorldTimerManager().SetTimer(KickoffStartHandle, this, &ASoccerGameMode::EndKickoff, 1.5f, false);
 }
@@ -57,6 +82,11 @@ void ASoccerGameMode::RegisterGoal(int32 ScoringTeam)
 	}
 
 	Scores[ScoringTeam]++;
+	// Sync to sim so Layer A team-strategy sees the new score.
+	if (USimHostSubsystem* Host = GetWorld() ? GetWorld()->GetSubsystem<USimHostSubsystem>() : nullptr)
+	{
+		Host->SetMatchScore((uint8)ScoringTeam, (uint16)Scores[ScoringTeam]);
+	}
 	UE_LOG(LogEdge26, Log, TEXT("Score: Home %d - %d Away"), Scores[0], Scores[1]);
 	OnGoalScored.Broadcast(ScoringTeam, Scores[ScoringTeam]);
 
@@ -80,24 +110,16 @@ void ASoccerGameMode::ResetForKickoff()
 		return;
 	}
 
-	Host->ResetBall(BallSpawnLocation);
-
-	TArray<APlayerStart*> Starts;
-	for (TActorIterator<APlayerStart> It(GetWorld()); It; ++It)
-	{
-		Starts.Add(*It);
-	}
-
-	int32 Idx = 0;
-	for (TActorIterator<AFootballerVisual> It(GetWorld()); It; ++It)
-	{
-		AFootballerVisual* F = *It;
-		if (Starts.IsValidIndex(Idx))
-		{
-			Host->ResetPlayer(F->ControllerIndex, Starts[Idx]->GetActorLocation(), Starts[Idx]->GetActorRotation());
-		}
-		++Idx;
-	}
+	// M1: place all 22 players at 4-3-3 slots (replaces PlayerStart iteration).
+	Host->ResetAllPlayersTo4_3_3();
+	// M12 fix: assign initial possession to the AWAY team's CDM (player 16,
+	// slot 5) and park the ball at their feet. The user controls the nearest
+	// HOME outfielder (auto-picked by ChooseHumanControlled). Putting
+	// possession on the AI team at kickoff lets the user OBSERVE AI off-ball
+	// behaviour immediately — the away CDM auto-passes/dribbles, home AI
+	// presses + tracks, possession changes hands organically. Without this,
+	// kickoff stalls (no carrier within KickReach of ball).
+	Host->ResetBallAtCarrier(/*TeamId=*/1, /*PlayerIndex=*/16);
 }
 
 void ASoccerGameMode::EndKickoff()
@@ -142,4 +164,16 @@ int32 ASoccerGameMode::GetScore(int32 TeamId) const
 float ASoccerGameMode::GetMatchTimeRemaining() const
 {
 	return MatchClock;
+}
+
+void ASoccerGameMode::PostLogin(APlayerController* NewPlayer)
+{
+	Super::PostLogin(NewPlayer);
+#if !UE_BUILD_SHIPPING
+	if (NewPlayer)
+	{
+		NewPlayer->CheatClass = UEdge26CheatManager::StaticClass();
+		NewPlayer->EnableCheats();
+	}
+#endif
 }

@@ -8,10 +8,11 @@ namespace edge26 {
 
 // Button bitfield positions (per player).
 namespace InputButton {
-    constexpr uint8_t Sprint = 1 << 0;
-    constexpr uint8_t Pass   = 1 << 1;
-    constexpr uint8_t Shoot  = 1 << 2;
-    constexpr uint8_t Chip   = 1 << 3;
+    constexpr uint8_t Sprint  = 1 << 0;
+    constexpr uint8_t Pass    = 1 << 1;
+    constexpr uint8_t Shoot   = 1 << 2;
+    constexpr uint8_t Chip    = 1 << 3;
+    constexpr uint8_t Switch  = 1 << 4;   // M9: manual player-switch button
 }
 
 // Natural layout: 4 (Tick) + 4 (Move[2][2]) + 2 (Buttons) + 2 (_pad) = 12 bytes.

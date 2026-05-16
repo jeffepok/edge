@@ -3,7 +3,11 @@
 #include "Adapter/FootballerVisual.h"
 #include "Adapter/SoccerBallVisual.h"
 #include "Edge26.h"
+#include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
+#include "AI/Formations.h"
+#include "AI/Switching.h"
+#include "Camera/BroadcastCamera.h"
 #include <cstring>
 
 using namespace edge26;
@@ -34,6 +38,44 @@ void USimHostSubsystem::Tick(float DeltaTime)
 		PrevState = CurrState;
 		Sim->Step(CurrentInput);
 		Sim->Snapshot(CurrState);
+
+		// Clear one-shot bits after consumption so they don't latch across ticks.
+		// Sprint (1<<0) is held by design — leave it alone.
+		constexpr uint8 kOneShotMask = (1<<1) | (1<<2) | (1<<3) | (1<<4); // Pass, Shoot, Chip, Switch
+		CurrentInput.Buttons[0] &= (uint8)~kOneShotMask;
+
+		// M9: re-Possess the right pawn when the sim's HumanControlledIndex changes.
+		// Note: PC->Possess sets the view target to the new pawn's camera, which
+		// fights the BroadcastCamera. Detect a broadcast camera in the world and,
+		// when one is active, skip the Possess call entirely — the sim still
+		// knows who the human is, input still routes via slot 0, and the camera
+		// stays anchored on the broadcast view for observation.
+		const uint8 idxNow = (uint8)Sim->GetState().Match.HumanControlledIndex;
+		if (idxNow != LastHumanControlledIndex && idxNow != 0xFF)
+		{
+			bool bBroadcastActive = false;
+			for (TActorIterator<ABroadcastCamera> It(GetWorld()); It; ++It)
+			{
+				bBroadcastActive = true;
+				break;
+			}
+			if (!bBroadcastActive)
+			{
+				if (auto* PC = GetWorld()->GetFirstPlayerController())
+				{
+					for (TActorIterator<AFootballerVisual> It(GetWorld()); It; ++It)
+					{
+						if ((uint8)It->ControllerIndex == idxNow)
+						{
+							PC->Possess(*It);
+							break;
+						}
+					}
+				}
+			}
+			LastHumanControlledIndex = idxNow;
+		}
+
 		CurrentTick++;
 		Accumulator -= TickDuration;
 	}
@@ -95,7 +137,14 @@ void USimHostSubsystem::RegisterFootballer(AFootballerVisual* Pawn, int32 Contro
 	if (Sim && ControllerIndex >= 0 && ControllerIndex < edge26::kSimPlayerCount)
 	{
 		auto& P = Sim->MutableState().Players[ControllerIndex];
-		P.ControllerIndex = (uint8)ControllerIndex;
+		// Visuals carry their identity (0..21). The sim's ControllerIndex was
+		// a Phase 1 concept (which input slot to read); in Phase 2 it's vestigial
+		// — the human is determined by Match.HumanControlledIndex, and AI players
+		// have no input slot. Keep sim's ControllerIndex as the slot id only for
+		// indices 0-1 (the two reachable input slots in v0).
+		P.ControllerIndex = (ControllerIndex < 2)
+		    ? (uint8)ControllerIndex
+		    : edge26::kStationaryController;
 		// Seed sim position from where the actor was placed in the level — otherwise
 		// the next tick teleports the visual to (0,0,0) and it disappears below the floor.
 		const FVector Loc = Pawn->GetActorLocation();
@@ -161,6 +210,27 @@ void USimHostSubsystem::ResetBall(FVector WorldPos)
 	PrevState = CurrState;
 }
 
+void USimHostSubsystem::ResetBallAtCarrier(int32 TeamId, int32 PlayerIndex)
+{
+	if (!Sim) return;
+	if (PlayerIndex < 0 || PlayerIndex >= edge26::kSimPlayerCount) return;
+	auto& State = Sim->MutableState();
+	State.Ball.Position = State.Players[PlayerIndex].Position;
+	State.Ball.Velocity = edge26::FixedVec3::Zero();
+	State.Ball.AngularVelocity = edge26::FixedVec3::Zero();
+	State.Ball.Flags = 0;
+	State.Match.PossessionTeam   = (uint8_t)TeamId;
+	State.Match.PossessionPlayer = (uint8_t)PlayerIndex;
+	// Human (always team 0 in v0) controls the nearest home outfielder to the
+	// ball. ChooseHumanControlled would do this on next tick, but pin it now
+	// so the manual-switch-cooldown-suppressed first 25 ticks have a sensible
+	// focus even when the carrier is on the away team.
+	int humanIdx = edge26::ChooseHumanControlled(State, 0);
+	if (humanIdx >= 0) State.Match.HumanControlledIndex = (uint8_t)humanIdx;
+	Sim->Snapshot(CurrState);
+	PrevState = CurrState;
+}
+
 void USimHostSubsystem::ResetPlayer(int32 ControllerIndex, FVector WorldPos, FRotator WorldRot)
 {
 	if (!Sim) return;
@@ -172,6 +242,30 @@ void USimHostSubsystem::ResetPlayer(int32 ControllerIndex, FVector WorldPos, FRo
 	const int32_t yawRaw = (int32_t)(yawRad * (double)edge26::Fixed32::One);
 	P.Heading      = edge26::FixedAngle::FromRaw(yawRaw);
 	P.FacingTarget = P.Heading;
+	Sim->Snapshot(CurrState);
+	PrevState = CurrState;
+}
+
+void USimHostSubsystem::SetMatchScore(uint8 TeamId, uint16 NewScore)
+{
+	if (!Sim || TeamId > 1) return;
+	Sim->MutableState().Match.Score[TeamId] = NewScore;
+}
+
+void USimHostSubsystem::ResetAllPlayersTo4_3_3()
+{
+	if (!Sim) return;
+	auto& State = Sim->MutableState();
+	for (int i = 0; i < edge26::kSimPlayerCount; ++i)
+	{
+		int teamId = (i < 11) ? 0 : 1;
+		int slotIndex = i % 11;
+		edge26::FixedVec3 slotPos = edge26::SlotWorldPosition(slotIndex, teamId);
+		State.Players[i].Position = slotPos;
+		State.Players[i].Velocity = edge26::FixedVec3::Zero();
+		State.Players[i].TeamId = (uint8_t)teamId;
+		State.Players[i].RoleId = (uint8_t)edge26::kFormation_4_3_3[slotIndex].Role;
+	}
 	Sim->Snapshot(CurrState);
 	PrevState = CurrState;
 }

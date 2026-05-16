@@ -40,7 +40,7 @@ echo "==> self-test"
 "./${REPLAY_BIN}" --self-test || { echo "FAIL: self-test"; exit 1; }
 
 REPLAY_DIR="Source/Edge26SimStandalone/tests/replays"
-for name in basic ball_only rollback_torture; do
+for name in basic ball_only rollback_torture ai_match_30s; do
     echo "==> replay: $name"
     ACTUAL="$("./${REPLAY_BIN}" --input "$REPLAY_DIR/${name}.input" --hash-every 1)"
     EXPECTED="$(cat "$REPLAY_DIR/${name}.expected.hashes")"

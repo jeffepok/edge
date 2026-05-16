@@ -2,30 +2,61 @@
 
 ## Current status
 
-**Phase 1: Sim Core v0 is COMPLETE and verified in PIE.** All seven
-milestones (M1–M7) shipped: fixed-point math library (Q32.32 / Q16.16
-with trig, sqrt, atan2, rng, xxhash), POD sim state structs with
-explicit padding, SimWorld tick (kinematic player + simple ball
-physics + kick impulses), snapshot/restore/hash with rollback round-
-trip, headless replay binary with 3 input streams and per-tick hash
-baselines, local + GitHub Actions determinism gate, UE5 visual-shell
-adapter with SimHostSubsystem driving interpolated transforms,
-rewritten RUNBOOK.
+**Phase 2: Spatial AI v0 is COMPLETE.** All twelve milestones (M1–M12)
+shipped: 22-player roster with roles + 4-3-3 formation; 5-field spatial
+value model (Space, DefCoverage, LaneOccupancy, Threat, PassReception)
+at 1768 cells × 2 teams; three-layer AI cascade (Team Strategy 2 Hz /
+Unit Coordination 10 Hz / Individual 50 Hz); offside enforcement with
+30-tick grace; simple goalkeeper (stance/sweeper/save-prediction); FIFA-
+style player switching (auto + manual + 25-tick cooldown); AI debug
+overlay (heatmaps, intent arrows, offside lines); tele-broadcast camera
+for PIE observation. Automated acceptance criteria (§15 #2 determinism
+gate, #3 lint, #4 snapshot 72,936 B) all green; PIE acceptance (§15 #1,
+#5–#7, #10) confirmed in soak. Branch `feat/phase2-spatial-ai` is ready
+to push for 3-OS CI matrix verification.
 
-Automated acceptance criteria (spec §14 #1–#4, #6–#8) all pass.
-**PIE acceptance (§14 #5) confirmed working:** WASD moves the
-mannequin through the full input → IMC → sim → render-interpolation
-chain. **One remaining user manual step:** pushing the branch to
-verify the GitHub Actions determinism matrix runs green on
-Linux/macOS/Windows (spec §14 #1 cross-platform).
+**Phase 1: Sim Core v0 is COMPLETE and merged.** All seven milestones
+(M1–M7) shipped: fixed-point math library (Q32.32 / Q16.16 with trig,
+sqrt, atan2, rng, xxhash), POD sim state structs with explicit padding,
+SimWorld tick (kinematic player + simple ball physics + kick impulses),
+snapshot/restore/hash with rollback round-trip, headless replay binary
+with 3 input streams and per-tick hash baselines, local + GitHub Actions
+determinism gate, UE5 visual-shell adapter with SimHostSubsystem driving
+interpolated transforms, rewritten RUNBOOK.
 
-The repo now has a deterministic 50Hz simulation core ready for Phase 2
-(spatial AI), Phase 3 (motion matching, render-side only per §3), or
-Phase 4 (rollback netcode).
+The repo now has a deterministic 50 Hz football match (22 v 22) ready
+for Phase 3 (motion-matching animation + procedural ball-contact IK,
+render-side only per spec §3) or Phase 4 (rollback netcode). Ball-player
+contact aesthetics (the "ball flicker between players when contested"
+feel) are intentionally deferred to Phase 3, when animation state
+machines + ball-contact IK replace the current tick-discrete kick
+model.
+
+We are at **Phase 2 M12 of M12** (AI tuning pass + final acceptance). M11 (CI baselines for 22-player streams) is complete: ai_match_30s replay stream added to replay_generator (1500-tick scripted human input on slot 0 — sprint held, direction cycling every 100 ticks, pass every 250 ticks); check_determinism.sh and update_determinism_baseline.sh updated to four-stream gate; all 4 baselines regenerated and committed; check_determinism.sh PASS (4 streams, 5700 total ticks). M10 (AI debug overlay) is complete: AAIDebugRenderer skeleton + ESpatialFieldDebug enum; heatmap (DrawDebugBox per spatial cell, ~1768 boxes/frame when active); intent arrows + role/intent labels; offside-line draws (cyan home, red away); UEdge26CheatManager exec commands (edge26_ai_show_field/team_perspective/intent_arrows/offside_lines) wired via ASoccerGameMode::PostLogin (#if !UE_BUILD_SHIPPING); AAIDebugRenderer placed in L_Pitch via headless Python (BP subclass workaround for UE5.7 -nullrhi SpawnActor crash). Editor build green. M9 (player switching) is complete: FMatchState._pad1 renamed to LastManualSwitchTick (184 B unchanged); InputButton::Switch = 1<<4 added; ChooseHumanControlled + NextSwitchTarget pure functions in Switching.h/.cpp (nearest non-GK teammate to ball, carrier priority, overflow-safe clamped delta, sentinel Fixed64::FromInt(999999999)); ApplySwitching at end of SimWorld::Step (manual switch advances to next-nearest + 25-tick cooldown; auto-switch runs after cooldown expires); IA_Switch InputAction created (Boolean type) + R key bound in IMC_Player via headless Python (imc.map_key API + save_asset with only_if_is_dirty=False); SimInputCollector binds IA_Switch → OnSwitch → SetButton(1<<4); SimHostSubsystem re-Possesses on HumanControlledIndex change (TActorIterator<AFootballerVisual> scan, LastHumanControlledIndex cache); 3 new tests (Sim_ManualSwitchSuppressesAutoSwitch, Sim_ChooseHumanControlled_Carrier, Sim_ChooseHumanControlled_NoPossession_PicksNearest) pass; determinism check PASS; editor build Succeeded. M8 (simple goalkeeper AI) is complete: GK constants kGKReachRadius/kGoalHalfWidth/kGKStanceOffset/kBoxDepth added to Constants.h; GoalkeeperAI.h/.cpp with FindGoalkeeper, UpdateGoalkeeperAI (3-tier: stance → sweeper → save-prediction), MaybeGoalkeeperSave (reach-radius intercept, deterministic first-save wins); GKs routed to UpdateGoalkeeperAI in Layer C loop (not UpdatePlayerAI); MaybeGoalkeeperSave called between kicks and ResolveOffsideCall; Sim_GKSavesIncomingShot test passes (ball at 50cm from GK with -15 m/s velocity → save → velocity zeroed, possession assigned to GK); overflow fix: clamp deltas before Sqrt in reach/save checks to prevent Q32.32 overflow for out-of-pitch positions; baselines regenerated; lint + CI gates green. Judgment call: plan's distSq pattern overflows int64 for positions like 99999 cm (common in tests); replaced with clamped delta pattern consistent with rest of codebase.
+M7 (offside enforcement) is complete: CellIsOffside helper in MaybeApplyKick (SimWorld_Ball.cpp) flags PendingOffsideCallTeam + PendingOffsideCallTick when the pass receiver is past OffsideLineY[1-attackingTeam]; ResolveOffsideCall (SimWorld.cpp) runs after kicks, before UpdatePossession: grace-expired (30 ticks) OR received (attacking team controls ball on a later tick) → award possession to nearest defending outfielder + teleport ball to that player + stop ball velocity; constructor explicitly sets PendingOffsideCallTeam=0xFF + HumanControlledIndex=0; Sim_OffsideFlagAndResolve test (away passes to offside receiver, flag set on tick 1, resolves by tick 31, home defender gains possession) passes; 30 self-tests pass; baselines regenerated (no drift); lint + CI gates green. Judgment call: plan's `received` trigger guarded by `TickNumber > startedTick` to prevent same-tick resolution (possession hasn't updated at the point ResolveOffsideCall runs); test uses HumanControlledIndex=12 to prevent UpdatePlayerAI from clearing PendingButtons.
+M6 (Layer A team strategy) is complete: TeamStrategy.h/.cpp with MatchSecondsRemaining helper (kMatchTotalSeconds=5400, kSimTickHz=50), UpdateTeamStrategy body (4-3-3 defaults, trailing-late push (Mentality=+2), leading-late drop-deep (Mentality=-1), drawn-late cautious push (Mentality=+1), per-team personality: home=possession/BuildupStyle=0, away=counter/CounterAttackBias=3), UpdateAllTeamStrategy wired at 2 Hz in SimWorld::Step BEFORE Layer B; AI_LateGameMentalityShift test passes (TickNumber=225000, Score 0-1 → home Mentality=+2, away Mentality=-1); 49 self-tests pass; baselines regenerated; lint + CI gates green.
+M5 (Layer B unit coordination)
+is complete: PendingButtons field in FSimPlayerState (88 B layout preserved), PassSuccessProbability
++ BestPassReceiverIdx helpers, EvaluateOnBall evaluator (Pass/Shoot/Dribble/Hold/Clear), MaybeApplyKick
+widened to consume AI PendingButtons (ResolveButtonsForPlayer helper), IntendedPassTarget-directed pass
+normalization fixed (used Fixed64 operator/ to avoid overflow), UpdatePossession (pickup radius + out-of-pitch
+clear, with overflow-safe delta clamping), Sim_PossessionFlipsOnPickup + Sim_AICarrierFiresPass tests pass;
+28 self-tests; baselines verified; lint + CI gates green.
+M5 (Layer B unit coordination) is complete: UnitOf(ERole) constexpr helper in Roles.h; UnitCoordination.h/.cpp
+with UpdateDefensiveUnit (defensive line from avg CB/FB X + LineHeightBias, offside line from last-defender X vs
+ball X, compactness as X-stddev, nearest-to-ball press nomination), UpdateMidfieldUnit (central-channel press,
+line, compactness), UpdateAttackUnit (top-line from most-forward attacker, same-side FB overlap nomination);
+UpdateAllUnits wired at 10 Hz in SimWorld::Step (before Layer C); Layer C Press block replaced with Layer B
+nomination check (3× boost for nominee), MakeRunForward gets 2× overlap boost for nominated FB; overflow-safe
+arithmetic used throughout (Fixed64::operator* instead of raw multiply-then-divide for sign flip); 48 self-tests
+pass; baselines regenerated; lint + CI gates green. Judgment calls: plan's `raw * Sign.Raw / One` pattern
+replaced with `Fixed64::operator*` to prevent int64 intermediate overflow.
+Spec: `docs/superpowers/specs/2026-05-15-phase2-spatial-ai-design.md`. Plan:
+`docs/superpowers/plans/2026-05-15-phase2-spatial-ai-plan.md`.
 
 ## Roadmap
 
-### Phase 1: Deterministic Sim Core v0  ←  current
+### Phase 1: Deterministic Sim Core v0  ←  complete
 - [x] M0. Module scaffolding (Build.cs, uproject, CMake, PROGRESS.md, lint script)
 - [x] M1. Fixed-point math library (`Fixed64`, `Fixed32`, `FixedVec3`, trig, sqrt, RNG, hash)
 - [x] M2. SimWorld tick loop + InputFrame + SimBall/SimPlayer state structs
@@ -35,8 +66,21 @@ Phase 4 (rollback netcode).
 - [x] M6. UE5 adapter (SimHost subsystem, AFootballerVisual, ASoccerBallVisual, BP re-parent)
 - [x] M7. RUNBOOK rewrite + final acceptance pass (PIE test + CI push remain as user manual steps)
 
-### Phase 2: Spatial Value Model + 22-player AI  (placeholder)
-### Phase 3: Motion-matching animation + procedural ball-contact IK  (placeholder; render-side only per spec §3)
+### Phase 2: Spatial Value Model + 22-player AI  ←  complete
+- [x] M1. Roster expansion: 22 players, roles, formations, kickoff placement
+- [x] M2. Spatial Value Model (5 fields × 1768 cells)
+- [x] M3. Layer C off-ball intents
+- [x] M4. Layer C on-ball decisions
+- [x] M5. Layer B unit coordination (defensive line, press, overlap)
+- [x] M6. Layer A team strategy (mentality, late-game adjustments)
+- [x] M7. Offside enforcement
+- [x] M8. Simple goalkeeper AI
+- [x] M9. Player switching (auto + manual + camera)
+- [x] M10. AI debug overlay (heatmaps + intent arrows)
+- [x] M11. CI baselines for 22-player streams
+- [x] M12. AI tuning pass + final acceptance
+
+### Phase 3: Motion-matching animation + procedural ball-contact IK  ←  next  (render-side only per spec §3)
 ### Phase 4: Rollback netcode  (placeholder)
 ### Phase 5: Economy & compliance backend  (separate repo)
 
@@ -58,3 +102,19 @@ Phase 4 (rollback netcode).
 - M7 landed: RUNBOOK fully rewritten for the new architecture (CMake/lint/PIE workflows, troubleshooting table, headless Python commandlet pattern). Automated acceptance criteria all green: determinism gate PASS, lint OK, Edge26Sim depends only on Core, standalone has no UE5 dylib, decision log D1–D9 current. PIE acceptance walk-through and CI push verification remain as user manual steps.
 - All v0 acceptance criteria green except the two manual steps. Phase 1 is shippable.
 - Post-merge PIE polish: filled BP-overlooked defaults into C++ constructors via ConstructorHelpers (SKM_Manny_Simple, ABP_Footballer, /Game/Input/* IAs, Engine sphere mesh) so re-parented BPs work without manual setup; SimHostSubsystem now seeds player/ball position from placed actor transforms (was teleporting to origin); IA_Look type fixed Boolean → Axis2D (Mouse XY can't bind to a Boolean action without ensure-fail); BP_OpponentFootballer set to AutoPossessPlayer=Disabled, ControllerIndex=1 via Python; IA_Move path mismatch fixed (loaded /Game/Input/IA_Move but IMC binds /Game/Input/Actions/IA_Move). WASD now drives the mannequin end-to-end. PIE acceptance criteria §14 #5 GREEN.
+- M1 landed: kSimPlayerCount 2→22, ERole enum, FFormationSlot + kFormation_4_3_3, FSimPlayerState 64→88 B, SimWorld ctor places 22, ResetAllPlayersTo4_3_3 in adapter, 22-player snapshot baselines regenerated, all unit tests pass.
+- M2 landed: FSpatialValueModel (70 KB) + FMatchState (184 B) embedded into FSimWorldState (72,936 B); 5 spatial-field update functions (Space, DefCoverage, LaneOccupancy, Threat, PassReception); UpdateSpatialFields wired into SimWorld::Step at 50 Hz; baselines regenerated; lint + CI gates green.
+- M3 landed: EIntent enum (12 values, 7 off-ball + 5 on-ball stubs), FRoleWeights struct + kRoleWeightsTable[10 roles] with per-role multipliers, full EvaluateOffBall evaluator (7 intents: HoldPosition, MakeRunForward, DropToReceive, ProvideWidth, Press, TrackRunner, HoldDefensiveLine) scored from spatial value fields with saturation-safe distance arithmetic; UpdatePlayerAI wired into SimWorld::Step at 50 Hz; Sim_22PlayerTickStable smoke test (22 players, 100 ticks, position bounds check) passes; baselines regenerated; lint + CI gates green. Judgment call: F32() helper uses compile-time double with SIM-LINT-OK annotation (avoids 110 pre-computed integer literals).
+- M4 landed: PendingButtons byte added to FSimPlayerState (at offset 62, _pad[2] → PendingButtons+_pad0, 88 B maintained); PassSuccessProbability + BestPassReceiverIdx helpers (blocker projection uses __int128 via SIM-LINT-OK); EvaluateOnBall evaluator (5 intents: Pass/Shoot/Dribble/Hold/Clear); UpdatePlayerAI routes on-ball vs off-ball per tick; MaybeApplyKick widened to `(ball, player, frame, worldState, playerIdx)` with ResolveButtonsForPlayer helper; IntendedPassTarget-directed pass using Fixed64 operator/ for overflow-safe normalization (plan used Raw*One/Raw which overflows for large distances); UpdatePossession (80cm pickup radius + out-of-pitch clear) with delta-clamped overflow protection; 28 self-tests (2 new: Sim_PossessionFlipsOnPickup, Sim_AICarrierFiresPass); baselines verified unchanged (replay streams don't exercise AI carriers near ball); lint + CI gates green. Judgment calls: (1) T4.1+T4.2 helper additions combined into single commit to satisfy -Werror,-Wunused-function; (2) plan's normalize formula `(raw * Fixed64::One) / d_raw` replaced with `Fixed64 operator/` to prevent int64 overflow.
+- M5 landed: UnitCoordination.h/.cpp (UpdateDefensiveUnit, UpdateMidfieldUnit, UpdateAttackUnit, UpdateAllUnits); UnitOf(ERole) constexpr helper added to Roles.h; 10 Hz hook (every 5 ticks) in SimWorld::Step before Layer C; Layer C Press replaced with Layer B nomination (3× boost, nominee is nearest unit member to ball per unit type); MakeRunForward gets 2× boost when FB is the overlap-nominated player; overflow-safe arithmetic throughout (Fixed64::operator* instead of raw multiply/divide for sign-flip operations); 48 self-tests pass; baselines regenerated; lint + CI gates green. Judgment calls: plan's `bias.Raw * Sign.Raw / Fixed64::One` pattern overflows int64 for realistic bias values — replaced with Fixed64::operator* which uses __int128 internally; same fix applied to signed-forward ↔ absolute-X conversions in UpdateDefensiveUnit and UpdateAttackUnit.
+- M8 landed: simple goalkeeper AI. GK constants in Constants.h (kGKReachRadius=180cm, kGoalHalfWidth=366cm, kGKStanceOffset=100cm, kBoxDepth=1650cm); GoalkeeperAI.h/.cpp (FindGoalkeeper, UpdateGoalkeeperAI 3-tier stance/sweeper/save-prediction, MaybeGoalkeeperSave reach-radius intercept); GKs routed to UpdateGoalkeeperAI in Layer C (not UpdatePlayerAI); MaybeGoalkeeperSave between kicks and ResolveOffsideCall; Sim_GKSavesIncomingShot test passes; 31 self-tests pass; baselines regenerated; lint + CI gates green. Judgment call: distSq clamped before Sqrt to prevent Q32.32 overflow for out-of-pitch positions used in unit tests.
+- M7 landed: offside enforcement. MaybeApplyKick Pass branch flags PendingOffsideCallTeam + PendingOffsideCallTick when receiver is past OffsideLineY[1-team]; ResolveOffsideCall (30-tick grace or received-by-attacker trigger) awards ball to nearest defending outfielder; Sim_OffsideFlagAndResolve test passes; 30 self-tests pass; baselines regenerated; lint + CI gates green.
+- M6 landed: TeamStrategy.h/.cpp with MatchSecondsRemaining (kMatchTotalSeconds=5400, kSimTickHz=50), F32FromFraction helper, UpdateTeamStrategy full body (4-3-3 defaults; trailing-late: Mentality=+2/LineHeightBias=+1/PressIntensity=3/MentalityShootBias=1.5; leading-late: Mentality=-1/LineHeightBias=-1/PressIntensity=1/Tempo=1/PanicBias=0.5/HoldBias=0.7; drawn-late: Mentality=+1; per-team personality: home=possession/BuildupStyle=0, away=counter/CounterAttackBias=3), UpdateAllTeamStrategy wired at 2 Hz in SimWorld::Step BEFORE Layer B (spec §5 ordering: Layer A → B → C); AI_LateGameMentalityShift test (TickNumber=225000=4500s elapsed → 900s left < 1800s threshold, Score 0-1 → home trailing: Mentality=+2, away leading: Mentality=-1) passes; 49 self-tests pass; baselines regenerated; lint + CI gates green.
+
+
+### 2026-05-17 — Phase 2 closeout
+- M9 landed: FMatchState._pad1 → LastManualSwitchTick (struct still 184 B); InputButton::Switch = 1<<4; ChooseHumanControlled + NextSwitchTarget pure functions (carrier-priority, then nearest non-GK home outfielder, overflow-clamped delta-sq); ApplySwitching at end of Step (manual via R = next-nearest + 25-tick cooldown, auto post-cooldown); IA_Switch + R key bound in IMC_Player via headless Python; SimInputCollector binds OnSwitch → SetButton(slot 0, 1<<4); SimHostSubsystem re-Possesses on HumanControlledIndex change.
+- M10 landed: AAIDebugRenderer (heatmap via DrawDebugBox per cell, intent arrows + role+intent labels, cyan/red offside lines); UEdge26CheatManager exec commands (edge26_ai_show_field / team_perspective / intent_arrows / offside_lines); cheat manager attached via SoccerGameMode::PostLogin (#if !UE_BUILD_SHIPPING). BroadcastCamera at touchline 25 m height auto-spawned, tracks ball X smoothly, re-asserts view target each tick.
+- M11 landed: ai_match_30s replay stream (1500-tick scripted human input — sprint held, direction cycles every 100 ticks, pass every 250); check_determinism.sh + update_determinism_baseline.sh both updated to the 4-stream gate; all baselines regenerated; gate PASS.
+- M12 landed: PIE soak surfaced ~20 production-grade bugs that all needed inline fixes. Major ones: SimMath::Sqrt didn't converge for distances > 100 cm (8-iter Newton from x/2 — Phase 1 only needed close-range sqrt; Phase 2 needs pitch-scale). Fixed with msb-based seed + 16 iters. BP_SoccerGameMode wasn't a subclass of ASoccerGameMode → re-parented via headless Python so StartPlay/PostLogin actually chain. Layer C was skipping the human, so when ChooseHumanControlled put the human on the carrier they never got EvaluateOnBall → ball just sat — fixed by running Layer C for everyone + OR'ing PendingButtons into the human's button frame. Loose-ball recovery: removed `PossessionTeam != 0xFF` gate from Press nomination so chasers fire on miscued passes too. Clump-stability: at exact overlap (d=0), separation now emits a deterministic perpendicular kick + 3× SprintSpeed off-zero so stacked players un-stick; MaybeApplyKick locks out re-kicks while ball is moving > 5 m/s. Codex P1/P2 review pass addressed: one-shot button latch, sim score sync from PIE goals, possession-stale clear on loose ball, rearmost-defender offside line, debug team-perspective clamp. Final pass: ball XY clamp at touchlines (Phase 3 will replace with set-pieces), intent target-hysteresis (2 m deadzone) to stop midfield-cell flicker. Tele-broadcast camera added so the user can observe the AI without F8-flying. Final §15 §6/§7 visually confirmed in PIE; §8 GK saves verified by automated test (PIE-rare due to current ball-contact aesthetics, which are intentionally deferred to Phase 3).
+- Phase 2 v0 acceptance: §15 #1, #2, #3, #4, #5, #6, #7, #10, #11 all green; #8 (GK saves) automated-test green, PIE-rare; #9 (manual switch) sim verified. Branch `feat/phase2-spatial-ai` is ready to push for the 3-OS CI matrix.

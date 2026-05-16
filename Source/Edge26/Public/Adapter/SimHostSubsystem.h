@@ -36,9 +36,24 @@ public:
 	// Goal-trigger reads (spec §11).
 	FVector GetBallPositionWorld() const;
 
+	// Read-only snapshot of the latest sim state (used by debug renderer).
+	const edge26::FSimWorldState& GetState() const { return CurrState; }
+
 	// Kickoff reset helpers (GameMode calls these).
 	void ResetBall(FVector WorldPos);
 	void ResetPlayer(int32 ControllerIndex, FVector WorldPos, FRotator WorldRot);
+
+	// M1: position all 22 players at 4-3-3 slots (called by GameMode on kickoff).
+	// Iterates the sim state and writes both sim state AND visual actor transforms.
+	void ResetAllPlayersTo4_3_3();
+
+	// M12: place ball at the given player's feet and grant them possession.
+	// Also nominates that player as the human at kickoff. Used by ResetForKickoff
+	// to bootstrap on-ball AI evaluation.
+	void ResetBallAtCarrier(int32 TeamId, int32 PlayerIndex);
+
+	// Sync UE5-side score into the sim so Layer A team-strategy reads the real score.
+	void SetMatchScore(uint8 TeamId, uint16 NewScore);
 
 private:
 	void DriveVisuals(float Alpha);
@@ -56,4 +71,7 @@ private:
 
 	TArray<TWeakObjectPtr<AFootballerVisual>> Footballers;
 	TWeakObjectPtr<ASoccerBallVisual> Ball;
+
+	// M9: tracks last sim HumanControlledIndex to detect changes and re-Possess.
+	uint8 LastHumanControlledIndex = 0xFF;
 };

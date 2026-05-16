@@ -37,6 +37,9 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Input")
 	TObjectPtr<UInputAction> IA_Chip;
 
+	UPROPERTY(EditAnywhere, Category = "Input")
+	TObjectPtr<UInputAction> IA_Switch;
+
 	void Bind(class UEnhancedInputComponent* Component);
 
 protected:
@@ -48,6 +51,7 @@ protected:
 	void OnPass(const FInputActionValue& Value);
 	void OnShoot(const FInputActionValue& Value);
 	void OnChip(const FInputActionValue& Value);
+	UFUNCTION() void OnSwitch(const FInputActionValue& Value);
 
 	void RegisterMappingContext();
 };

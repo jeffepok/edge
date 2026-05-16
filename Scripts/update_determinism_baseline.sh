@@ -12,7 +12,7 @@ cmake --build build/sim --parallel > /dev/null
 ./build/sim/replay_generator Source/Edge26SimStandalone/tests/replays
 
 REPLAY_DIR="Source/Edge26SimStandalone/tests/replays"
-for name in basic ball_only rollback_torture; do
+for name in basic ball_only rollback_torture ai_match_30s; do
     ./build/sim/edge26_sim_replay --input "$REPLAY_DIR/${name}.input" --hash-every 1 \
         > "$REPLAY_DIR/${name}.expected.hashes"
     echo "wrote $REPLAY_DIR/${name}.expected.hashes"
