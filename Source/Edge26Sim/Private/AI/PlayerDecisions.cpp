@@ -128,10 +128,13 @@ static int BestPassReceiverIdx(const FSimPlayerState& carrier,
         Fixed32 prVal = s.Spatial.Cells[passingTeam][(int)ESpatialField::PassReception][cellIdx];
         Fixed32 succ  = PassSuccessProbability(carrier.Position, mate.Position, passingTeam, s);
 
-        // Forward bonus: prefer up-pitch teammates.
+        // Forward bonus: heavily prefer up-pitch teammates (M12 tune — without
+        // this, carriers favor "safe" lateral/back passes and the ball never
+        // reaches the opp goal area). Bonus = 3 × (forward_delta / PitchHalfLen),
+        // so a full down-pitch pass is 4× a sideways pass instead of 2×.
         Fixed64 forwardDelta = (mate.Position.X - carrier.Position.X) * SignForTeam(passingTeam);
         Fixed32 forwardBonus = (forwardDelta.Raw > 0)
-            ? Fixed32::FromRaw((int32_t)((forwardDelta.Raw * (int64_t)Fixed32::One)
+            ? Fixed32::FromRaw((int32_t)((forwardDelta.Raw * (int64_t)(Fixed32::One * 3))
                                          / SimConst::PitchHalfLen.Raw))
             : Fixed32::FromRaw(0);
         Fixed32 oneF32 = Fixed32::FromRaw(Fixed32::One);
