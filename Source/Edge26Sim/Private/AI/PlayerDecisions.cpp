@@ -225,9 +225,11 @@ static void EvaluateOffBall(FSimPlayerState& p, const FSimWorldState& s,
         }
     }
 
-    // 5. Press — opp possession + I'm the nominated presser for my unit (Layer B).
-    if (!ownTeamHasBall && s.Match.PossessionTeam != 0xFF
-        && p.RoleId != (uint8_t)ERole::GK)
+    // 5. Press / Recover — fire when opp has the ball OR ball is loose, AND
+    // I'm the nominated presser for my unit (Layer B). Loose-ball recovery
+    // is critical: without it the game stalls on every miscued pass because
+    // no one chases the rolling ball.
+    if (!ownTeamHasBall && p.RoleId != (uint8_t)ERole::GK)
     {
         int myUnit = UnitOf((ERole)p.RoleId);
         const FUnitState& unit = s.Match.Units[p.TeamId][myUnit];

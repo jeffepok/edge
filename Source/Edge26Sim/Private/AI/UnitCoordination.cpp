@@ -84,8 +84,10 @@ void UpdateDefensiveUnit(FUnitState& u, FSimWorldState& s, int teamId) {
         u.Compactness = Fixed32::FromRaw((int32_t)(std.Raw * Fixed32::One / Fixed64::FromInt(1000).Raw));
     }
 
-    // Press nomination: only when opponent has the ball.
-    if (s.Match.PossessionTeam != (uint8_t)teamId && s.Match.PossessionTeam != 0xFF) {
+    // Press / recover nomination: when opp has the ball OR ball is loose
+    // (PossessionTeam == 0xFF). Without the loose-ball branch the game stalls
+    // on every miscued pass — no one chases.
+    if (s.Match.PossessionTeam != (uint8_t)teamId) {
         u.PressTrigger = 1;
         // Pick nearest unit-member to ball.
         int     bestIdx = 0xFF;
@@ -130,12 +132,15 @@ void UpdateMidfieldUnit(FUnitState& u, FSimWorldState& s, int teamId) {
     }
     if (count > 0) u.LineY = Fixed64::FromRaw(sumX.Raw / count);
 
-    // Press: only when opp has the ball AND it's in the central channel
-    // (|ball.Y| < 1/3 pitch width).
+    // Press / recover: when opp has ball (in central channel) OR ball is
+    // loose anywhere. Loose-ball recovery prevents the game from stalling
+    // after a miscued pass.
     const Fixed64 centralChannel = SimConst::PitchHalfWid / Fixed64::FromInt(3);
-    bool oppHasBall = (s.Match.PossessionTeam != (uint8_t)teamId
-                        && s.Match.PossessionTeam != 0xFF);
-    if (oppHasBall && Abs(s.Ball.Position.Y).Raw < centralChannel.Raw) {
+    bool oppHasBallCentral = (s.Match.PossessionTeam != (uint8_t)teamId
+                              && s.Match.PossessionTeam != 0xFF
+                              && Abs(s.Ball.Position.Y).Raw < centralChannel.Raw);
+    bool ballLoose = (s.Match.PossessionTeam == 0xFF);
+    if (oppHasBallCentral || ballLoose) {
         u.PressTrigger = 1;
         int     bestIdx = 0xFF;
         Fixed64 bestSq  = Fixed64::FromInt(99999999);
