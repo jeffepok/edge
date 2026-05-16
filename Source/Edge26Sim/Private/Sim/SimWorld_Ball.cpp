@@ -15,9 +15,14 @@ static uint16_t ResolveButtonsForPlayer(const FInputFrame& frame,
                                         int playerIdx)
 {
     // Human input is always in slot 0 (single local player in v0).
-    // The human's pawn-of-the-moment is identified by HumanControlledIndex;
-    // their ControllerIndex field is vestigial post-M9.
-    if ((uint8_t)playerIdx == m.HumanControlledIndex) return (uint16_t)frame.Buttons[0];
+    // M12 fix: OR with PendingButtons so the AI fires kicks autonomously
+    // for the human's pawn when the user isn't pressing buttons (otherwise
+    // the human-controlled carrier just stands there during PIE observation).
+    // User input still wins because OR — any bit set in frame.Buttons[0]
+    // also fires its kick path.
+    if ((uint8_t)playerIdx == m.HumanControlledIndex) {
+        return (uint16_t)(frame.Buttons[0] | p.PendingButtons);
+    }
     return (uint16_t)p.PendingButtons;
 }
 

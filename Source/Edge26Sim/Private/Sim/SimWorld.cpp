@@ -188,12 +188,19 @@ void SimWorld::Step(const FInputFrame& frame) {
         UpdateAllUnits(State);
     }
 
-    // Layer C: per-AI player off-ball intent evaluation.
+    // Layer C: per-player intent evaluation. Runs for EVERYONE including the
+    // human (M12 fix: was skipping the human, which meant when ChooseHumanControlled
+    // auto-switched to the carrier, Layer C never wrote on-ball intent +
+    // PendingButtons for them — the carrier sat there with stale Press intent
+    // and never fired a kick). The human's actual movement still comes from
+    // frame.Move[0] in StepPlayer's human path; Layer C's AITargetPosition is
+    // a "suggestion" that gets ignored for the human pawn. PendingButtons IS
+    // OR'd with frame.Buttons[0] for humans (see ResolveButtonsForPlayer) so
+    // the AI fires kicks autonomously when the user isn't pressing a button.
     // GKs get a dedicated AI path (UpdateGoalkeeperAI) instead of the generic
     // Layer C intent loop (UpdatePlayerAI).
     for (int i = 0; i < kSimPlayerCount; ++i) {
         FSimPlayerState& p = State.Players[i];
-        if (i == State.Match.HumanControlledIndex) continue;   // human is handled below
         if (p.RoleId == (uint8_t)ERole::GK) {
             UpdateGoalkeeperAI(p, State, i);
         } else {

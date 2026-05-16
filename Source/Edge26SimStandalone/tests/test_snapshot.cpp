@@ -104,8 +104,14 @@ TEST_CASE(Ball_FallsUnderGravity) {
 
 TEST_CASE(Ball_SettlesOnGround) {
     SimWorld w{1};
-    w.MutableState().Ball.Position.Z = Fixed64::FromInt(100);
-    w.MutableState().Ball.Velocity   = FixedVec3::Zero();
+    // Clear kickoff possession + move ball far from all 22 players so the AI
+    // can't pick it up and keep kicking it. We're testing ball physics only.
+    w.MutableState().Match.PossessionTeam   = 0xFF;
+    w.MutableState().Match.PossessionPlayer = 0xFF;
+    w.MutableState().Ball.Position = FixedVec3{
+        Fixed64::FromInt(99999), Fixed64::FromInt(99999), Fixed64::FromInt(100)
+    };
+    w.MutableState().Ball.Velocity = FixedVec3::Zero();
     FInputFrame f{};
     for (int i = 0; i < 500; ++i) { f.TickNumber = (uint32_t)i; w.Step(f); }
     TEST_EXPECT_TRUE(w.GetState().Ball.Position.Z.Raw <= (SimConst::BallRadius.Raw + (Fixed64::One / 10)));
