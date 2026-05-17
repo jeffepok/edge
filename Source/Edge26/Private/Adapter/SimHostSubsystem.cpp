@@ -85,6 +85,23 @@ void USimHostSubsystem::Tick(float DeltaTime)
 
 	float Alpha = FMath::Clamp(Accumulator / TickDuration, 0.0f, 1.0f);
 	DriveVisuals(Alpha);
+
+	// M12 P3: broadcast queued anim events to per-pawn delegates.
+	for (const FAnimEventPayload& Ev : PendingAnimEvents)
+	{
+		if (Ev.PlayerIndex < 0 || Ev.PlayerIndex >= edge26::kSimPlayerCount) continue;
+		for (auto& Weak : Footballers)
+		{
+			AFootballerVisual* F = Weak.Get();
+			if (!F) continue;
+			if (F->ControllerIndex == Ev.PlayerIndex)
+			{
+				F->OnAnimEvent.Broadcast(Ev);
+				break;
+			}
+		}
+	}
+	PendingAnimEvents.Reset();
 }
 
 static FVector ToUE(edge26::FixedVec3 v)

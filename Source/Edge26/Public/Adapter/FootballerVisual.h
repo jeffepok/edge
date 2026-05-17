@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Pawn.h"
+#include "Animation/FootballerAnimEvents.h"
 #include "FootballerVisual.generated.h"
 
 class USkeletalMeshComponent;
@@ -37,6 +38,12 @@ public:
 
 	UPROPERTY(BlueprintReadOnly, Category = "Anim")
 	float RelativeDirection = 0.0f;
+
+	/** Fired by SimHostSubsystem when an anim event targets this pawn. */
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAnimEvent, const FAnimEventPayload&, Event);
+
+	UPROPERTY(BlueprintAssignable, Category="Anim")
+	FOnAnimEvent OnAnimEvent;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	TObjectPtr<class USimInputCollector> InputCollector;
