@@ -3,6 +3,7 @@
 #include "Adapter/SimInputCollector.h"
 #include "Adapter/SimHostSubsystem.h"
 #include "Animation/AnimInstance.h"
+#include "Animation/FootballAnimInstance.h"
 #include "Camera/BroadcastSpringArmComponent.h"
 #include "Camera/CameraComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -60,6 +61,17 @@ void AFootballerVisual::BeginPlay()
 		{
 			Host->RegisterFootballer(this, ControllerIndex);
 		}
+	}
+
+	// M3 P3: route AnimEvent broadcasts into the anim instance's event queue.
+	OnAnimEvent.AddDynamic(this, &AFootballerVisual::HandleAnimEvent);
+}
+
+void AFootballerVisual::HandleAnimEvent(const FAnimEventPayload& Event)
+{
+	if (auto* AnimInst = Cast<UFootballAnimInstance>(Mesh->GetAnimInstance()))
+	{
+		AnimInst->EnqueueEvent(Event);
 	}
 }
 

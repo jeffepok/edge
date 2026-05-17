@@ -45,6 +45,9 @@ public:
 	UPROPERTY(BlueprintAssignable, Category="Anim")
 	FOnAnimEvent OnAnimEvent;
 
+	UFUNCTION()
+	void HandleAnimEvent(const FAnimEventPayload& Event);
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	TObjectPtr<class USimInputCollector> InputCollector;
 
