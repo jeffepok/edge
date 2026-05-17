@@ -43,3 +43,40 @@ bool FRenderSnapshotBufferDelayRespected::RunTest(const FString& Parameters)
 
     return true;
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FRenderSnapshotBufferEmitsKick,
+    "Edge26.Render.SnapshotBuffer.EmitsKick",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FRenderSnapshotBufferEmitsKick::RunTest(const FString& Parameters)
+{
+    FRenderSnapshotBuffer Buf;
+
+    // Snapshot A (tick 0): PendingButtons[3] = 0.
+    edge26::FSimWorldState s{};
+    s.TickNumber = 0;
+    Buf.Push(0, s);
+
+    // Snapshot B (tick 1): PendingButtons[3] = Pass (1<<1).
+    s.TickNumber = 1;
+    s.Players[3].PendingButtons = 1 << 1;
+    Buf.Push(1, s);
+
+    // First pop: tick 0 — no prev consumed, no events.
+    edge26::FSimWorldState out{};
+    TArray<FAnimEventPayload> ev;
+    TestTrue(TEXT("Pop tick 0 ok"), Buf.PopForTick(0, out, ev));
+    TestEqual(TEXT("First pop emits nothing"), ev.Num(), 0);
+
+    // Second pop: tick 1 — diff against tick 0; Kick rising edge for player 3.
+    TestTrue(TEXT("Pop tick 1 ok"), Buf.PopForTick(1, out, ev));
+    TestEqual(TEXT("Kick event count"), ev.Num(), 1);
+    if (ev.Num() >= 1)
+    {
+        TestEqual(TEXT("Event is Kick"), (int32)ev[0].Kind, (int32)EFootballerAnimEvent::Kick);
+        TestEqual(TEXT("PlayerIndex"), ev[0].PlayerIndex, 3);
+        TestEqual(TEXT("KickKind"), (int32)ev[0].KickKind, (int32)EKickKind::Pass);
+    }
+    return true;
+}
