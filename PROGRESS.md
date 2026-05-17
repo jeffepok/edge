@@ -54,6 +54,11 @@ replaced with `Fixed64::operator*` to prevent int64 intermediate overflow.
 Spec: `docs/superpowers/specs/2026-05-15-phase2-spatial-ai-design.md`. Plan:
 `docs/superpowers/plans/2026-05-15-phase2-spatial-ai-plan.md`.
 
+We are at **Phase 3 M1 of M12** (RenderSnapshotBuffer). Spec at
+`docs/superpowers/specs/2026-05-17-phase3-animation-design.md`. Plan at
+`docs/superpowers/plans/2026-05-17-phase3-animation-plan.md`. Branch:
+`feat/phase3-animation`.
+
 ## Roadmap
 
 ### Phase 1: Deterministic Sim Core v0  ←  complete
@@ -80,7 +85,19 @@ Spec: `docs/superpowers/specs/2026-05-15-phase2-spatial-ai-design.md`. Plan:
 - [x] M11. CI baselines for 22-player streams
 - [x] M12. AI tuning pass + final acceptance
 
-### Phase 3: Motion-matching animation + procedural ball-contact IK  ←  next  (render-side only per spec §3)
+### Phase 3: Motion-matching animation + procedural ball-contact IK  ←  current  (render-side only per spec §3)
+- [ ] M1. RenderSnapshotBuffer + 200 ms delay wiring
+- [ ] M2. Snapshot-diff event extraction (KickEvent, BallReceived, GoalkeeperSave)
+- [ ] M3. FootballAnimInstance base class + trajectory generation
+- [ ] M4. Game Animation Sample import + MMDB_Outfield skeleton
+- [ ] M5. ABP_Footballer_MM motion-matching state tree
+- [ ] M6. Foot IK setup (TwoBoneIK per leg, ground-plane projection)
+- [ ] M7. Mixamo retarget + football overlays + anim notifies
+- [ ] M8. BallContactIKComponent + kick-montage IK alpha
+- [ ] M9. Goalkeeper subclass + MMDB_Goalkeeper + GK animations
+- [ ] M10. Anim event hookup (KickEvent → montage trigger)
+- [ ] M11. Re-place 22 BP_Footballer instances with role-correct anim BPs
+- [ ] M12. Final acceptance (PIE soak + UE5 automation tests + PROGRESS.md)
 ### Phase 4: Rollback netcode  (placeholder)
 ### Phase 5: Economy & compliance backend  (separate repo)
 
