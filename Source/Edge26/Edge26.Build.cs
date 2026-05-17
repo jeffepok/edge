@@ -43,5 +43,10 @@ public class Edge26 : ModuleRules
 			"RHI",
 			"RenderCore"
 		});
+
+		if (Target.bBuildEditor)
+		{
+			PrivateDependencyModuleNames.Add("UnrealEd");
+		}
 	}
 }
