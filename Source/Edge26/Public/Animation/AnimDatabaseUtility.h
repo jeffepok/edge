@@ -9,6 +9,7 @@
 class UPoseSearchSchema;
 class UPoseSearchDatabase;
 class UAnimSequence;
+class UAnimMontage;
 class USkeleton;
 class UAnimBlueprint;
 
@@ -166,4 +167,57 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Edge26 Anim")
 	static bool SaveAnimBlueprintAsset(UAnimBlueprint* AnimBP);
+
+	/**
+	 * Adds a string-named AnimNotify event at the given time (seconds from
+	 * sequence start) to an AnimSequence. The notify is a plain UAnimNotify (no
+	 * UObject backing, no notify-state) — the consuming AnimBP / AnimInstance
+	 * listens by name (e.g. AnimNotify_BallContact / AnimNotify_RecoverEnd
+	 * native handlers, or BP-level notify routing).
+	 *
+	 * Idempotent: if a notify with the same NotifyName already exists on this
+	 * sequence at a time within 0.01s of TimeSec, the call is a no-op and
+	 * returns true. Otherwise a new FAnimNotifyEvent is appended to the
+	 * sequence's Notifies array via the public ENGINE_API path, the cache is
+	 * refreshed via RefreshCacheData(), and the package is marked dirty.
+	 *
+	 * Caller is responsible for saving the asset (use
+	 * `unreal.EditorAssetLibrary.save_asset(...)` from Python).
+	 *
+	 * Returns true on success, false on null sequence or non-editor build.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Edge26 Anim")
+	static bool AddAnimNotify(UAnimSequence* Sequence, FName NotifyName, float TimeSec);
+
+	/**
+	 * Creates a UAnimMontage at `<PackagePath>/<AssetName>` containing a single
+	 * slot ("DefaultSlot") with `SourceSequence` as the only segment. Mirrors
+	 * what `UAnimMontageFactory::FactoryCreateNew` does when its
+	 * `SourceAnimation` is set — bypassing the factory's modal skeleton picker
+	 * (which doesn't survive headless Python invocations on UE5.7 because the
+	 * `set_editor_property("source_animation", ...)` binding is unreliable
+	 * across UE point releases).
+	 *
+	 * Operations performed (all editor-only):
+	 *   1. Create / reuse the target package at `<PackagePath>/<AssetName>`.
+	 *   2. NewObject<UAnimMontage> with RF_Public | RF_Standalone | RF_Transactional.
+	 *   3. Push an FAnimSegment(SourceSequence) onto SlotAnimTracks[0].AnimTrack.AnimSegments.
+	 *   4. Call SetCompositeLength(SourceSequence->GetPlayLength()).
+	 *   5. Call SetSkeleton(SourceSequence->GetSkeleton()).
+	 *   6. Call UpdateCommonTargetFrameRate().
+	 *   7. UAnimMontageFactory::EnsureStartingSection (default section at T=0).
+	 *   8. FAssetRegistryModule::AssetCreated + MarkPackageDirty + SavePackage.
+	 *
+	 * Idempotent: if the asset already exists at the target path, this returns
+	 * the existing UAnimMontage and does not overwrite. Caller may still
+	 * separately mutate the returned montage (e.g. to swap the source) and
+	 * call SaveDatabaseAsset on the package.
+	 *
+	 * Returns the new (or existing) montage on success, nullptr otherwise.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Edge26 Anim")
+	static UAnimMontage* CreateMontageFromSequence(
+		UAnimSequence* SourceSequence,
+		const FString& PackagePath,
+		const FString& AssetName);
 };

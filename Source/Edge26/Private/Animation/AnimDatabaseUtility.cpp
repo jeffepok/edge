@@ -28,6 +28,10 @@
 #include "EdGraph/EdGraphPin.h"
 #include "EdGraphSchema_K2.h"
 #include "Animation/AnimTypes.h"
+#include "Animation/AnimSequence.h"
+#include "Animation/AnimMontage.h"
+#include "Animation/AnimCompositeBase.h"
+#include "Factories/AnimMontageFactory.h"
 #endif // WITH_EDITOR
 
 // -----------------------------------------------------------------------
@@ -870,5 +874,186 @@ bool UAnimDatabaseUtility::SaveAnimBlueprintAsset(UAnimBlueprint* AnimBP)
 #else
 	UE_LOG(LogAnimation, Warning, TEXT("AnimDatabaseUtility::SaveAnimBlueprintAsset is an editor-only operation."));
 	return false;
+#endif // WITH_EDITOR
+}
+
+// -----------------------------------------------------------------------
+// AddAnimNotify
+// -----------------------------------------------------------------------
+bool UAnimDatabaseUtility::AddAnimNotify(UAnimSequence* Sequence, FName NotifyName, float TimeSec)
+{
+#if WITH_EDITOR
+	if (!Sequence)
+	{
+		UE_LOG(LogAnimation, Error, TEXT("AnimDatabaseUtility::AddAnimNotify — Sequence is null"));
+		return false;
+	}
+	if (NotifyName.IsNone())
+	{
+		UE_LOG(LogAnimation, Error, TEXT("AnimDatabaseUtility::AddAnimNotify — NotifyName is None"));
+		return false;
+	}
+
+	const float Length = Sequence->GetPlayLength();
+	const float ClampedTime = FMath::Clamp(TimeSec, 0.0f, Length);
+
+	// Idempotency: skip if a matching notify (same name within 0.01s) is present.
+	for (const FAnimNotifyEvent& Existing : Sequence->Notifies)
+	{
+		if (Existing.NotifyName == NotifyName &&
+		    FMath::IsNearlyEqual(Existing.GetTime(), ClampedTime, 0.01f))
+		{
+			UE_LOG(LogAnimation, Log,
+				TEXT("AnimDatabaseUtility::AddAnimNotify: %s already has %s at t=%.3f — skip"),
+				*Sequence->GetName(), *NotifyName.ToString(), ClampedTime);
+			return true;
+		}
+	}
+
+	Sequence->Modify();
+
+	// Ensure at least one notify track exists so TrackIndex=0 is valid in the
+	// editor (otherwise the notify shows in the inspector but no track row).
+	if (Sequence->AnimNotifyTracks.Num() == 0)
+	{
+		FAnimNotifyTrack DefaultTrack;
+		DefaultTrack.TrackName = TEXT("1");
+		DefaultTrack.TrackColor = FLinearColor::White;
+		Sequence->AnimNotifyTracks.Add(DefaultTrack);
+	}
+
+	FAnimNotifyEvent NewNotify;
+	NewNotify.NotifyName        = NotifyName;
+	NewNotify.SetTime(ClampedTime);
+	NewNotify.TriggerTimeOffset = 0.0f;
+	NewNotify.EndTriggerTimeOffset = 0.0f;
+	NewNotify.TrackIndex        = 0;
+	NewNotify.Notify            = nullptr;
+	NewNotify.NotifyStateClass  = nullptr;
+
+	const int32 NewIdx = Sequence->Notifies.Add(NewNotify);
+	Sequence->AnimNotifyTracks[0].Notifies.Add(&Sequence->Notifies[NewIdx]);
+
+	Sequence->RefreshCacheData();
+	Sequence->MarkPackageDirty();
+
+	UE_LOG(LogAnimation, Log,
+		TEXT("AnimDatabaseUtility::AddAnimNotify: %s += %s @ t=%.3f (len=%.3f)"),
+		*Sequence->GetName(), *NotifyName.ToString(), ClampedTime, Length);
+	return true;
+
+#else
+	UE_LOG(LogAnimation, Warning, TEXT("AnimDatabaseUtility::AddAnimNotify is an editor-only operation."));
+	return false;
+#endif // WITH_EDITOR
+}
+
+// -----------------------------------------------------------------------
+// CreateMontageFromSequence
+// -----------------------------------------------------------------------
+UAnimMontage* UAnimDatabaseUtility::CreateMontageFromSequence(
+	UAnimSequence* SourceSequence,
+	const FString& PackagePath,
+	const FString& AssetName)
+{
+#if WITH_EDITOR
+	if (!SourceSequence)
+	{
+		UE_LOG(LogAnimation, Error, TEXT("AnimDatabaseUtility::CreateMontageFromSequence — SourceSequence is null"));
+		return nullptr;
+	}
+	USkeleton* Skeleton = SourceSequence->GetSkeleton();
+	if (!Skeleton)
+	{
+		UE_LOG(LogAnimation, Error, TEXT("AnimDatabaseUtility::CreateMontageFromSequence — %s has no skeleton"),
+			*SourceSequence->GetName());
+		return nullptr;
+	}
+
+	const FString PackageName = PackagePath / AssetName;
+
+	// Idempotency: if the asset already exists, return it (do not overwrite).
+	UPackage* Pkg = FindPackage(nullptr, *PackageName);
+	if (!Pkg)
+	{
+		Pkg = LoadPackage(nullptr, *PackageName, LOAD_NoWarn | LOAD_Quiet);
+	}
+	if (Pkg)
+	{
+		UAnimMontage* Existing = FindObject<UAnimMontage>(Pkg, *AssetName);
+		if (Existing)
+		{
+			UE_LOG(LogAnimation, Log,
+				TEXT("AnimDatabaseUtility::CreateMontageFromSequence — %s already exists, returning existing asset"),
+				*PackageName);
+			return Existing;
+		}
+	}
+
+	// Create + fully load a fresh package.
+	Pkg = CreatePackage(*PackageName);
+	check(Pkg);
+	Pkg->FullyLoad();
+
+	UAnimMontage* Montage = NewObject<UAnimMontage>(
+		Pkg,
+		*AssetName,
+		RF_Public | RF_Standalone | RF_Transactional);
+	if (!Montage)
+	{
+		UE_LOG(LogAnimation, Error, TEXT("AnimDatabaseUtility::CreateMontageFromSequence — NewObject failed for %s"),
+			*PackageName);
+		return nullptr;
+	}
+
+	// Push a single segment onto SlotAnimTracks[0]. UAnimMontage default-constructs
+	// SlotAnimTracks with one entry named "DefaultSlot" — no need to AddSlot().
+	if (Montage->SlotAnimTracks.Num() == 0)
+	{
+		Montage->AddSlot(FName(TEXT("DefaultSlot")));
+	}
+
+	FAnimSegment NewSegment;
+	NewSegment.SetAnimReference(SourceSequence, /*bInitialize=*/true);
+	Montage->SlotAnimTracks[0].AnimTrack.AnimSegments.Add(NewSegment);
+
+	Montage->SetCompositeLength(SourceSequence->GetPlayLength());
+	Montage->SetSkeleton(Skeleton);
+	// Note: UAnimMontageFactory also calls UpdateCommonTargetFrameRate() here,
+	// but that method is private with `friend class UAnimMontageFactory`. For a
+	// single-segment montage backed by one source sequence the common target
+	// frame rate is degenerate (= the source's frame rate) so skipping is safe.
+
+	// Ensure a default starting section at T=0 (mirrors
+	// UAnimMontageFactory::FactoryCreateNew).
+	UAnimMontageFactory::EnsureStartingSection(Montage);
+
+	// Register + save.
+	FAssetRegistryModule::AssetCreated(Montage);
+	Pkg->MarkPackageDirty();
+
+	FSavePackageArgs SaveArgs;
+	SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
+	SaveArgs.SaveFlags     = SAVE_NoError;
+	const FString PackageFilename = FPackageName::LongPackageNameToFilename(
+		PackageName, FPackageName::GetAssetPackageExtension());
+	const bool bSaved = UPackage::SavePackage(Pkg, Montage, *PackageFilename, SaveArgs);
+	if (!bSaved)
+	{
+		UE_LOG(LogAnimation, Error, TEXT("AnimDatabaseUtility::CreateMontageFromSequence — SavePackage failed for %s"),
+			*PackageName);
+	}
+	else
+	{
+		UE_LOG(LogAnimation, Log,
+			TEXT("AnimDatabaseUtility::CreateMontageFromSequence — created %s (1 segment, len=%.3f)"),
+			*PackageName, SourceSequence->GetPlayLength());
+	}
+
+	return Montage;
+
+#else
+	UE_LOG(LogAnimation, Warning, TEXT("AnimDatabaseUtility::CreateMontageFromSequence is an editor-only operation."));
+	return nullptr;
 #endif // WITH_EDITOR
 }
