@@ -67,8 +67,50 @@ bool FRenderSnapshotBuffer::PopForTick(uint32 ConsumeTick,
     return true;
 }
 
-void FRenderSnapshotBuffer::EmitEvents(const edge26::FSimWorldState& /*CurrSnapshot*/,
-                                        TArray<FAnimEventPayload>& /*OutEvents*/) const
+void FRenderSnapshotBuffer::EmitEvents(const edge26::FSimWorldState& Curr,
+                                        TArray<FAnimEventPayload>& OutEvents) const
 {
-    // M2 T2.x implements the diff rules. For M1 we ship the wiring only.
+    using namespace edge26;
+    const FSimWorldState& Prev = LastConsumedSnapshot;
+
+    auto ToUE = [](FixedVec3 v) -> FVector {
+        return FVector{
+            (double)v.X.Raw / (double)Fixed64::One,
+            (double)v.Y.Raw / (double)Fixed64::One,
+            (double)v.Z.Raw / (double)Fixed64::One };
+    };
+
+    // Rule 1: Kick rising-edge per-player.
+    // Sim sets PendingButtons[i] & (Pass|Shoot|Chip) on the tick a kick fires
+    // and the host's one-shot-clear wipes it the same tick. So "this tick had
+    // a bit, prev didn't" is the rising edge.
+    constexpr uint8_t kPass  = 1 << 1;
+    constexpr uint8_t kShoot = 1 << 2;
+    constexpr uint8_t kChip  = 1 << 3;
+    constexpr uint8_t kAnyKick = kPass | kShoot | kChip;
+
+    for (int i = 0; i < kSimPlayerCount; ++i)
+    {
+        const uint8_t pBits = Prev.Players[i].PendingButtons & kAnyKick;
+        const uint8_t cBits = Curr.Players[i].PendingButtons & kAnyKick;
+        const uint8_t rising = cBits & ~pBits;
+        if (rising == 0) continue;
+
+        FAnimEventPayload ev;
+        ev.Kind        = EFootballerAnimEvent::Kick;
+        ev.PlayerIndex = i;
+        ev.KickKind    = (rising & kPass)  ? EKickKind::Pass
+                       : (rising & kShoot) ? EKickKind::Shoot
+                       :                     EKickKind::Chip;
+        ev.BallPosition = ToUE(Curr.Ball.Position);
+        FixedVec3 v = Curr.Ball.Velocity;
+        FVector vUe = ToUE(v);
+        ev.KickDirection = vUe.GetSafeNormal2D();
+        // Target: if IntendedPassTarget is set, use that mate's position.
+        if (Curr.Players[i].IntendedPassTarget < kSimPlayerCount)
+        {
+            ev.TargetPosition = ToUE(Curr.Players[Curr.Players[i].IntendedPassTarget].Position);
+        }
+        OutEvents.Add(ev);
+    }
 }
