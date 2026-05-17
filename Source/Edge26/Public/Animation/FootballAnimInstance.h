@@ -9,6 +9,8 @@
 #include "Animation/FootballerAnimEvents.h"
 #include "FootballAnimInstance.generated.h"
 
+class UAnimMontage;
+
 UCLASS()
 class EDGE26_API UFootballAnimInstance : public UAnimInstance
 {
@@ -49,6 +51,25 @@ public:
     /** Called by AFootballerVisual when an event targets this pawn. */
     UFUNCTION(BlueprintCallable, Category="AnimEvents")
     void EnqueueEvent(const FAnimEventPayload& Event);
+
+    // ----- Montage assets (assigned per-AnimBP CDO; see M10 setup script) -----
+
+    /**
+     * Kick-action montage played by outfielders on EFootballerAnimEvent::Kick.
+     * Source clip is Soccer_Pass_Anim retargeted onto SK_Mannequin.
+     * Left null on GK AnimBP CDOs.
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Edge26 Anim|Montages")
+    TObjectPtr<UAnimMontage> KickMontage;
+
+    /**
+     * Save-action montage played by goalkeepers on
+     * EFootballerAnimEvent::GoalkeeperSave. Source clip is
+     * Goalkeeper_Diving_Save_Anim retargeted onto SK_Mannequin.
+     * Left null on outfield AnimBP CDOs.
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Edge26 Anim|Montages")
+    TObjectPtr<UAnimMontage> GoalkeeperSaveMontage;
 
 protected:
     // Updates Speed / TrajectoryVelocity / TrajectoryAcceleration from the
