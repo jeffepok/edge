@@ -113,4 +113,48 @@ void FRenderSnapshotBuffer::EmitEvents(const edge26::FSimWorldState& Curr,
         }
         OutEvents.Add(ev);
     }
+
+    // Rule 2: BallReceived — PossessionPlayer changed AND prev ball.Velocity.Z > 0
+    // (ball was airborne). This is the "first-touch trap" trigger.
+    if (Curr.Match.PossessionPlayer != Prev.Match.PossessionPlayer
+        && Curr.Match.PossessionPlayer < kSimPlayerCount
+        && Prev.Ball.Velocity.Z.Raw > 0)
+    {
+        FAnimEventPayload ev;
+        ev.Kind        = EFootballerAnimEvent::BallReceived;
+        ev.PlayerIndex = (int32)Curr.Match.PossessionPlayer;
+        ev.BallPosition = ToUE(Curr.Ball.Position);
+        OutEvents.Add(ev);
+    }
+
+    // Rule 3: GoalkeeperSave — ball.Velocity went to zero this tick AND
+    // PossessionPlayer is now a GK (RoleId == GK == 0). MaybeGoalkeeperSave
+    // sets both these together.
+    auto IsGK = [&](uint8_t idx) -> bool {
+        return idx < kSimPlayerCount && Curr.Players[idx].RoleId == 0;  // ERole::GK
+    };
+    if (Curr.Match.PossessionPlayer < kSimPlayerCount
+        && IsGK(Curr.Match.PossessionPlayer)
+        && Prev.Ball.Velocity.X.Raw != 0   // was moving
+        && Curr.Ball.Velocity.X.Raw == 0   // now stopped
+        && Curr.Ball.Velocity.Y.Raw == 0)
+    {
+        FAnimEventPayload ev;
+        ev.Kind        = EFootballerAnimEvent::GoalkeeperSave;
+        ev.PlayerIndex = (int32)Curr.Match.PossessionPlayer;
+        ev.BallPosition = ToUE(Curr.Ball.Position);
+        OutEvents.Add(ev);
+    }
+    // Rule 4: GoalkeeperCatch — PossessionPlayer is a GK and prev wasn't,
+    // and this isn't already a Save (ball wasn't moving).
+    else if (Curr.Match.PossessionPlayer < kSimPlayerCount
+             && IsGK(Curr.Match.PossessionPlayer)
+             && Prev.Match.PossessionPlayer != Curr.Match.PossessionPlayer)
+    {
+        FAnimEventPayload ev;
+        ev.Kind        = EFootballerAnimEvent::GoalkeeperCatch;
+        ev.PlayerIndex = (int32)Curr.Match.PossessionPlayer;
+        ev.BallPosition = ToUE(Curr.Ball.Position);
+        OutEvents.Add(ev);
+    }
 }
