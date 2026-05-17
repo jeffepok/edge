@@ -86,6 +86,45 @@ public:
 		UPoseSearchDatabase* Database);
 
 	/**
+	 * Inserts two UAnimGraphNode_TwoBoneIK nodes (left + right foot) between the
+	 * existing MotionMatching node and the Output Pose (Root) in the AnimBP's
+	 * AnimGraph, producing the chain:
+	 *
+	 *   MotionMatching -> TwoBoneIK_LeftFoot -> TwoBoneIK_RightFoot -> Root
+	 *
+	 * Idempotent: re-running won't duplicate nodes (looks for existing IK nodes
+	 * whose IKBone matches LeftFootBone / RightFootBone and reuses them).
+	 *
+	 * Each TwoBoneIK node is configured with:
+	 *   - IKBone.BoneName = <Left|Right>FootBone (e.g. "foot_l" / "foot_r")
+	 *   - JointTarget.BoneReference.BoneName = <Left|Right>JointBone (e.g. "calf_l" / "calf_r")
+	 *   - EffectorLocationSpace / JointTargetLocationSpace = BCS_BoneSpace
+	 *   - EffectorLocation = FVector::ZeroVector (i.e. stay at the bone's
+	 *     animated position — see note below)
+	 *   - Alpha = 1.0
+	 *
+	 * Note on the v0 IK policy: the milestone plan calls for an effector in
+	 * world space with a dynamic Z-clamp to ground level. That requires a
+	 * multi-node "Get Socket Transform -> Break -> Make Z=0 -> Effector" chain
+	 * which is brittle to spawn headlessly. For v0 — flat pitch, anims authored
+	 * at ground level — BCS_BoneSpace + zero offset means the IK pose-matches
+	 * the source pose, i.e. these nodes are dormant until ball-contact
+	 * montages, foot-plant detection, or terrain hook them in later milestones.
+	 * Inserting them now provides the IK chain infrastructure without
+	 * committing to a specific effector-targeting policy.
+	 *
+	 * Returns true on success (the AnimBP recompiles cleanly). Caller still
+	 * needs to save the package.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Edge26 Anim")
+	static bool InsertFootIKNodes(
+		UAnimBlueprint* AnimBP,
+		FName LeftFootBone,
+		FName LeftJointBone,
+		FName RightFootBone,
+		FName RightJointBone);
+
+	/**
 	 * Saves the package containing AnimBP. Returns true on success.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Edge26 Anim")

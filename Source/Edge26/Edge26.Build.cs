@@ -55,6 +55,9 @@ public class Edge26 : ModuleRules
 			PrivateDependencyModuleNames.Add("BlueprintGraph");
 			PrivateDependencyModuleNames.Add("KismetCompiler");
 			PrivateDependencyModuleNames.Add("PoseSearchEditor");
+			// FAnimNode_TwoBoneIK lives in AnimGraphRuntime (transitive via
+			// AnimGraph but listed explicitly since we touch the struct directly).
+			PrivateDependencyModuleNames.Add("AnimGraphRuntime");
 		}
 	}
 }
