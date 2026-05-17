@@ -54,14 +54,17 @@ replaced with `Fixed64::operator*` to prevent int64 intermediate overflow.
 Spec: `docs/superpowers/specs/2026-05-15-phase2-spatial-ai-design.md`. Plan:
 `docs/superpowers/plans/2026-05-15-phase2-spatial-ai-plan.md`.
 
-We are at **Phase 3 — M4 complete; advancing to M5 (ABP_Footballer_MM)**.
-M1–M4 + M8 (BallContactIKComponent) complete. M4 was unblocked by pivoting
-off the Game Animation Sample marketplace plugin to the project's existing
-`/Game/Characters/Mannequins/Anims/Unarmed/` locomotion set plus a headless
-C++/Python population path (UAnimDatabaseUtility wraps the public UE5.7
-`UPoseSearchDatabase::AddAnimationAsset` API). Remaining work (M5–M7,
-M9–M11) is still asset-heavy (editor AnimGraph wiring + Mixamo retargets).
-M12 (acceptance) follows. Spec at
+We are at **Phase 3 — M5 complete; advancing to M6 (foot IK)**. M1–M5 + M8
+(BallContactIKComponent) complete. M4 + M5 both landed fully headlessly via
+an extended `UAnimDatabaseUtility` BFL: MMDB_Outfield populated with 17
+locomotion clips, then `ABP_Footballer_MM` scaffolded + AnimGraph wired
+(Motion Matching → Root) — no Game Animation Sample marketplace plugin, no
+manual editor AnimGraph dragging. Remaining work (M6–M7, M9–M11) is still
+asset-heavy (foot-IK chains + Mixamo retargets). M12 (acceptance) follows
+and should verify the runtime `FPoseHistoryProvider` auto-inject path (the
+`UFootballAnimInstance::TrajectoryVelocity` / `TrajectorySamples`
+properties we compute will be dead code if no upstream node publishes the
+provider). Spec at
 `docs/superpowers/specs/2026-05-17-phase3-animation-design.md`. Plan at
 `docs/superpowers/plans/2026-05-17-phase3-animation-plan.md`. Branch:
 `feat/phase3-animation`.
@@ -97,7 +100,7 @@ M12 (acceptance) follows. Spec at
 - [x] M2. Snapshot-diff event extraction (KickEvent, BallReceived, GoalkeeperSave)
 - [x] M3. FootballAnimInstance base class + trajectory generation
 - [x] M4. Game Animation Sample import + MMDB_Outfield skeleton
-- [ ] M5. ABP_Footballer_MM motion-matching state tree
+- [x] M5. ABP_Footballer_MM motion-matching state tree
 - [ ] M6. Foot IK setup (TwoBoneIK per leg, ground-plane projection)
 - [ ] M7. Mixamo retarget + football overlays + anim notifies
 - [x] M8. BallContactIKComponent + kick-montage IK alpha
@@ -150,3 +153,4 @@ M12 (acceptance) follows. Spec at
 - M8 landed (out-of-order — pure C++, doesn't need plugin): UBallContactIKComponent attached to AFootballerVisual; consumes Kick events to drive wind-up (alpha 0→1 over 18f) + contact (snap to ball) + follow-through (alpha 1→0 over 12f). 3 UE5 automation tests green (DelayRespected + EmitsKick + AlphaRampSchedule). 2 implementer-found bugs fixed inline: off-by-one in wind-up alpha (now divides by WindUpFrames+1 for proper end-of-window cap), `Super::TickComponent` guarded by IsRegistered() for NewObject-based unit tests.
 - Blocked: M4 needs Epic Game Animation Sample plugin (user must install via Edit→Plugins→Marketplace).
 - M4 unblocked + landed (headless instead of marketplace plugin): user installed PoseSearch but Game Animation Sample wasn't needed — the project already has motion-matchable locomotion at `/Game/Characters/Mannequins/Anims/Unarmed/`. Replaced the original "manual editor drag-drop" T4.2 with a fully headless C++/Python path. Built `UAnimDatabaseUtility` (UBlueprintFunctionLibrary in Edge26 module, editor-only via `Target.bBuildEditor` gate on the `PoseSearch` dep) exposing `CreateSchemaWithDefaultChannels` / `SetDatabaseSchema` / `AddSequenceToDatabase` / `SaveDatabaseAsset` to Python through the public UE5.7 `UPoseSearchDatabase::AddAnimationAsset(const FPoseSearchDatabaseAnimationAsset&)` API — no protected-bypass needed. Probed and confirmed Python's `set_editor_property("animation_assets", ...)` is blocked, hence the C++ wrapper. Two scripts produced the assets: `Scripts/editor/create_mmdb_outfield.py` (empty database, 1,195 B) + `Scripts/editor/populate_mmdb_outfield.py` (populated with 17 locomotion clips: MM_Idle + 4 walk cardinals + 4 walk diagonals + 4 jog cardinals + 4 jog diagonals; MMDB_Outfield.uasset grew to 13,133 B, MMSchema_Outfield.uasset new at 2,167 B). `AddDefaultChannels` adds Trajectory + Pose channels on `SK_Mannequin`. DDC index build deferred to first editor open (headless `SAVE_BulkDataByReference` suppresses async build — acceptable; Pose Search auto-rebuilds when opened). Edge26.uproject converted UTF-16 LE → UTF-8 because UBT refused to re-parse with the new `PoseSearch` dep. Editor build green. Approach is reusable for `MMDB_Goalkeeper` in M9.
+- M5 landed (also fully headless): `ABP_Footballer_MM.uasset` (Anim Blueprint subclass of `UFootballAnimInstance` on `SK_Mannequin`) scaffolded via `Scripts/editor/create_abp_footballer_mm.py` (26,429 B), then AnimGraph wired via `Scripts/editor/wire_abp_footballer_mm_graph.py` + two new UFUNCTIONs on `UAnimDatabaseUtility` (`WireMotionMatchingAnimGraph` + `SaveAnimBlueprintAsset`). Final BP is 66,593 B — graph is the minimal pose chain `UAnimGraphNode_MotionMatching → AnimGraphNode_Root`, with `Database = MMDB_Outfield`. Significant API discovery: the plan's T5.2 said to feed `TrajectoryVelocity` / `TrajectorySamples` into Motion Matching's input pins, but UE5.7's `FAnimNode_MotionMatching` exposes exactly one `PinShownByDefault` UPROPERTY (`Database`) — trajectory flows at runtime via the schema's `UPoseSearchFeatureChannel_Trajectory` ← `IPoseHistory` ← `FPoseHistoryProvider` (context message bus), not graph pins. Two-node graph is the legitimate UE5.7 shape. Second gotcha: `Database` lives on the pin default (because of `PinShownByDefault`), so direct FProperty writes from C++ don't persist across save/reload — `set_editor_property` on the embedded struct from Python is the only path that survives serialization. Added editor-only deps to `Edge26.Build.cs`: `AnimGraph`, `BlueprintGraph`, `KismetCompiler`, `PoseSearchEditor`. Editor build green; `compile_blueprint` reports clean. **Caveat for M12 verification:** if no upstream node publishes `FPoseHistoryProvider`, the inherited trajectory properties become dead code. Engine auto-inject usually handles this, but should be explicitly confirmed in the M12 PIE soak.
