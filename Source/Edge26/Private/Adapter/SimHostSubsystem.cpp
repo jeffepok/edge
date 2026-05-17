@@ -38,6 +38,8 @@ void USimHostSubsystem::Tick(float DeltaTime)
 		PrevState = CurrState;
 		Sim->Step(CurrentInput);
 		Sim->Snapshot(CurrState);
+            // M12 P3: push every sim snapshot into the render-side delay buffer.
+            SnapshotBuffer.Push(CurrentTick, CurrState);
 
 		// Clear one-shot bits after consumption so they don't latch across ticks.
 		// Sprint (1<<0) is held by design — leave it alone.
@@ -101,7 +103,7 @@ static FRotator ToUEYaw(edge26::FixedAngle a)
 	return FRotator(0.0, FMath::RadiansToDegrees(rad), 0.0);
 }
 
-void USimHostSubsystem::DriveVisuals(float Alpha)
+void USimHostSubsystem::DriveVisualsFromCurrPrev(float Alpha)
 {
 	// Ball.
 	if (Ball.IsValid())
@@ -124,6 +126,48 @@ void USimHostSubsystem::DriveVisuals(float Alpha)
 		FRotator r  = ToUEYaw(CurrState.Players[idx].Heading);
 		F->DriveFromSim(FTransform(r, p));
 	}
+}
+
+void USimHostSubsystem::DriveVisualsLegacy(float Alpha)
+{
+	DriveVisualsFromCurrPrev(Alpha);
+}
+
+void USimHostSubsystem::DriveVisuals(float Alpha)
+{
+	if (!Sim) return;
+
+	// Determine which sim tick to render. We stay kRenderDelayTicks behind
+	// the latest pushed sim tick so anim montages have time to play.
+	const uint32 LatestSimTick = SnapshotBuffer.LatestTick();
+	if (LatestSimTick < FRenderSnapshotBuffer::kRenderDelayTicks)
+	{
+		// Not enough history yet (first ~200 ms of PIE); fall back to PrevState/CurrState.
+		DriveVisualsLegacy(Alpha);
+		return;
+	}
+	const uint32 ConsumeTick = LatestSimTick - FRenderSnapshotBuffer::kRenderDelayTicks;
+
+	edge26::FSimWorldState NewConsumed;
+	TArray<FAnimEventPayload> EmittedEvents;
+	if (!SnapshotBuffer.PopForTick(ConsumeTick, NewConsumed, EmittedEvents))
+	{
+		DriveVisualsLegacy(Alpha);
+		return;
+	}
+
+	// Slide PrevState <- CurrState <- NewConsumed so the existing lerp keeps working.
+	PrevState = CurrState;
+	CurrState = NewConsumed;
+
+	// Queue events for outside-the-while-loop dispatch.
+	for (const auto& Ev : EmittedEvents)
+	{
+		PendingAnimEvents.Add(Ev);
+	}
+
+	// Drive visuals using the swapped PrevState <-> CurrState.
+	DriveVisualsFromCurrPrev(Alpha);
 }
 
 // Forward declare; defined below.

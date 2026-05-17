@@ -6,6 +6,7 @@
 #include "Subsystems/WorldSubsystem.h"
 #include "Sim/SimWorld.h"
 #include "Sim/InputFrame.h"
+#include "Adapter/RenderSnapshotBuffer.h"
 #include "SimHostSubsystem.generated.h"
 
 class AFootballerVisual;
@@ -57,6 +58,8 @@ public:
 
 private:
 	void DriveVisuals(float Alpha);
+    void DriveVisualsFromCurrPrev(float Alpha);
+    void DriveVisualsLegacy(float Alpha);
 
 	edge26::SimWorld* Sim = nullptr;
 	float Accumulator = 0.0f;
@@ -74,4 +77,13 @@ private:
 
 	// M9: tracks last sim HumanControlledIndex to detect changes and re-Possess.
 	uint8 LastHumanControlledIndex = 0xFF;
+
+    // M12 P3: ring buffer of 25 snapshots (~500 ms). DriveVisuals consumes
+    // from kRenderDelayTicks behind so anim has time to play foot-strike
+    // montages before the ball "releases" at the BallContact notify.
+    FRenderSnapshotBuffer SnapshotBuffer;
+
+    // M12 P3: events emitted by SnapshotBuffer this frame.
+    // Drained by DriveVisuals; broadcast to per-pawn anim instances.
+    TArray<FAnimEventPayload> PendingAnimEvents;
 };
