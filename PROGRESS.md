@@ -54,7 +54,7 @@ replaced with `Fixed64::operator*` to prevent int64 intermediate overflow.
 Spec: `docs/superpowers/specs/2026-05-15-phase2-spatial-ai-design.md`. Plan:
 `docs/superpowers/plans/2026-05-15-phase2-spatial-ai-plan.md`.
 
-We are at **Phase 3 M2 of M12** (snapshot-diff event extraction). Spec at
+We are at **Phase 3 M3 of M12** (FootballAnimInstance + trajectory generation). Spec at
 `docs/superpowers/specs/2026-05-17-phase3-animation-design.md`. Plan at
 `docs/superpowers/plans/2026-05-17-phase3-animation-plan.md`. Branch:
 `feat/phase3-animation`.
@@ -87,7 +87,7 @@ We are at **Phase 3 M2 of M12** (snapshot-diff event extraction). Spec at
 
 ### Phase 3: Motion-matching animation + procedural ball-contact IK  ←  current  (render-side only per spec §3)
 - [x] M1. RenderSnapshotBuffer + 200 ms delay wiring
-- [ ] M2. Snapshot-diff event extraction (KickEvent, BallReceived, GoalkeeperSave)
+- [x] M2. Snapshot-diff event extraction (KickEvent, BallReceived, GoalkeeperSave)
 - [ ] M3. FootballAnimInstance base class + trajectory generation
 - [ ] M4. Game Animation Sample import + MMDB_Outfield skeleton
 - [ ] M5. ABP_Footballer_MM motion-matching state tree
@@ -138,3 +138,4 @@ We are at **Phase 3 M2 of M12** (snapshot-diff event extraction). Spec at
 
 ### 2026-05-17 — Phase 3 session 1
 - M1 landed: FRenderSnapshotBuffer ring (25 entries, 500 ms history) + 200 ms (10-tick) delay wiring in SimHostSubsystem. EFootballerAnimEvent enum + FAnimEventPayload defined (diff logic stubbed for M2). 1 UE5 automation test passes (DelayRespected). Determinism gate green; lint OK; sim code untouched.
+- M2 landed: RenderSnapshotBuffer.EmitEvents now diffs Curr vs LastConsumed and emits Kick (rising PendingButtons), BallReceived (possession change while ball airborne), GoalkeeperSave (ball stopped + GK possession), GoalkeeperCatch (GK gains possession non-save). FAnimEventPayload broadcast via AFootballerVisual::OnAnimEvent. 2 UE5 automation tests green (DelayRespected + EmitsKick).
