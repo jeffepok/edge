@@ -19,6 +19,8 @@
 #include "AnimGraphNode_TwoBoneIK.h"
 #include "BoneControllers/AnimNode_TwoBoneIK.h"
 #include "PoseSearch/AnimNode_MotionMatching.h"
+#include "AnimGraphNode_PoseSearchHistoryCollector.h"
+#include "PoseSearch/AnimNode_PoseSearchHistoryCollector.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/CompilerResultsLog.h"
 #include "Kismet2/KismetEditorUtilities.h"
@@ -574,6 +576,255 @@ bool UAnimDatabaseUtility::InsertFootIKNodes(
 
 #else
 	UE_LOG(LogAnimation, Warning, TEXT("AnimDatabaseUtility::InsertFootIKNodes is an editor-only operation."));
+	return false;
+#endif // WITH_EDITOR
+}
+
+// -----------------------------------------------------------------------
+// InsertPoseHistoryCollector
+// -----------------------------------------------------------------------
+bool UAnimDatabaseUtility::InsertPoseHistoryCollector(UAnimBlueprint* AnimBP)
+{
+#if WITH_EDITOR
+	if (!AnimBP)
+	{
+		UE_LOG(LogAnimation, Error, TEXT("AnimDatabaseUtility::InsertPoseHistoryCollector — AnimBP is null"));
+		return false;
+	}
+
+	// 1. Find the AnimGraph.
+	UEdGraph* AnimGraph = nullptr;
+	for (UEdGraph* G : AnimBP->FunctionGraphs)
+	{
+		if (G && G->GetFName() == TEXT("AnimGraph"))
+		{
+			AnimGraph = G;
+			break;
+		}
+	}
+	if (!AnimGraph)
+	{
+		UE_LOG(LogAnimation, Error, TEXT("AnimDatabaseUtility::InsertPoseHistoryCollector — AnimGraph not found on %s"), *AnimBP->GetName());
+		return false;
+	}
+
+	// 2. Locate the MotionMatching node (M5 / M9 prerequisite).
+	UAnimGraphNode_MotionMatching* MMNode = nullptr;
+	for (UEdGraphNode* N : AnimGraph->Nodes)
+	{
+		if (UAnimGraphNode_MotionMatching* AsMM = Cast<UAnimGraphNode_MotionMatching>(N))
+		{
+			MMNode = AsMM;
+			break;
+		}
+	}
+	if (!MMNode)
+	{
+		UE_LOG(LogAnimation, Error,
+			TEXT("AnimDatabaseUtility::InsertPoseHistoryCollector — no MotionMatching node found on %s"),
+			*AnimBP->GetName());
+		return false;
+	}
+
+	// 3. Locate MM's Pose output pin.
+	UEdGraphPin* MMPoseOut = MMNode->FindPin(TEXT("Pose"), EGPD_Output);
+	if (!MMPoseOut)
+	{
+		UE_LOG(LogAnimation, Error, TEXT("AnimDatabaseUtility::InsertPoseHistoryCollector — MM has no 'Pose' output pin"));
+		return false;
+	}
+
+	// 4. Idempotency: detect an existing PoseSearchHistoryCollector already
+	//    sitting between MM and its current sink, OR placed in the graph at all.
+	//    Two cases to short-circuit on:
+	//      a. MM.Pose -> Collector.Source already wired — nothing to do beyond
+	//         re-applying configuration + recompiling.
+	//      b. Collector exists in the graph but is wired somewhere else — we
+	//         take it over rather than spawning a duplicate.
+	UAnimGraphNode_PoseSearchHistoryCollector* CollectorNode = nullptr;
+	for (UEdGraphNode* N : AnimGraph->Nodes)
+	{
+		if (UAnimGraphNode_PoseSearchHistoryCollector* AsCollector =
+			Cast<UAnimGraphNode_PoseSearchHistoryCollector>(N))
+		{
+			CollectorNode = AsCollector;
+			break;
+		}
+	}
+
+	const bool bSpawnedCollector = (CollectorNode == nullptr);
+
+	// 5. Capture what MM is currently feeding (its downstream sink) BEFORE we
+	//    touch anything. This is what the collector's Pose output will get
+	//    re-wired to. There should be exactly one such link in the M5/M6/M9
+	//    canonical chains:
+	//      ABP_Footballer_MM: MM.Pose -> TwoBoneIK_L.ComponentPose
+	//      ABP_Goalkeeper:    MM.Pose -> Root.Result
+	//    If a collector is already in place, its Source pin currently holds the
+	//    MM.Pose link instead; in that case look at the collector's own Pose
+	//    output to find the downstream sink.
+	UEdGraphPin* DownstreamSinkPin = nullptr;
+	if (bSpawnedCollector)
+	{
+		if (MMPoseOut->LinkedTo.Num() == 0)
+		{
+			UE_LOG(LogAnimation, Error,
+				TEXT("AnimDatabaseUtility::InsertPoseHistoryCollector — MM.Pose is unconnected on %s; M5/M9 wiring must run first"),
+				*AnimBP->GetName());
+			return false;
+		}
+		if (MMPoseOut->LinkedTo.Num() > 1)
+		{
+			UE_LOG(LogAnimation, Warning,
+				TEXT("AnimDatabaseUtility::InsertPoseHistoryCollector — MM.Pose has %d sinks on %s; will splice into the first"),
+				MMPoseOut->LinkedTo.Num(), *AnimBP->GetName());
+		}
+		DownstreamSinkPin = MMPoseOut->LinkedTo[0];
+	}
+	else
+	{
+		// Collector already in graph. Its Pose output (if connected) tells us
+		// the downstream sink we need to preserve.
+		UEdGraphPin* CollectorPoseOut = CollectorNode->FindPin(TEXT("Pose"), EGPD_Output);
+		if (CollectorPoseOut && CollectorPoseOut->LinkedTo.Num() > 0)
+		{
+			DownstreamSinkPin = CollectorPoseOut->LinkedTo[0];
+		}
+		else
+		{
+			// Collector exists but is unwired downstream — fall back to MM's
+			// current sink (if any). If neither is wired, bail.
+			if (MMPoseOut->LinkedTo.Num() == 0)
+			{
+				UE_LOG(LogAnimation, Error,
+					TEXT("AnimDatabaseUtility::InsertPoseHistoryCollector — both MM.Pose and existing Collector.Pose are unconnected on %s"),
+					*AnimBP->GetName());
+				return false;
+			}
+			DownstreamSinkPin = MMPoseOut->LinkedTo[0];
+		}
+	}
+	check(DownstreamSinkPin);
+
+	// 6. Spawn the collector node if it didn't already exist.
+	if (bSpawnedCollector)
+	{
+		FGraphNodeCreator<UAnimGraphNode_PoseSearchHistoryCollector> NodeCreator(*AnimGraph);
+		CollectorNode = NodeCreator.CreateNode(/*bSelectNewNode=*/false);
+		NodeCreator.Finalize();
+
+		// Position: between MM and whatever it was feeding. Doesn't matter for
+		// runtime; just keeps the editor view sane.
+		CollectorNode->NodePosX = MMNode->NodePosX + 240;
+		CollectorNode->NodePosY = MMNode->NodePosY;
+
+		UE_LOG(LogAnimation, Log,
+			TEXT("AnimDatabaseUtility: Spawned UAnimGraphNode_PoseSearchHistoryCollector in %s"),
+			*AnimBP->GetName());
+	}
+	else
+	{
+		UE_LOG(LogAnimation, Log,
+			TEXT("AnimDatabaseUtility: Reusing existing UAnimGraphNode_PoseSearchHistoryCollector in %s"),
+			*AnimBP->GetName());
+	}
+
+	// 7. Configure the embedded runtime node. We need bGenerateTrajectory=true
+	//    because the AnimGraph has no upstream Trajectory predictor: without
+	//    self-generation, the schema's Trajectory feature channel would have no
+	//    samples to match against and MM would degrade to static pose matching.
+	//
+	//    UAnimGraphNode_PoseSearchHistoryCollector::Node is private (unlike
+	//    UAnimGraphNode_TwoBoneIK::Node which is public), so we resolve the
+	//    runtime node via the AnimGraphNode_Base reflection helpers.
+	if (FAnimNode_Base* RuntimeNodeBase = CollectorNode->GetFNode())
+	{
+		FAnimNode_PoseSearchHistoryCollector* RuntimeNode =
+			static_cast<FAnimNode_PoseSearchHistoryCollector*>(RuntimeNodeBase);
+		RuntimeNode->bGenerateTrajectory        = true;
+		RuntimeNode->PoseCount                  = 2;
+		RuntimeNode->SamplingInterval           = 0.04f;
+		RuntimeNode->TrajectoryHistoryCount     = 10;
+		RuntimeNode->TrajectoryPredictionCount  = 8;
+		RuntimeNode->PredictionSamplingInterval = 0.4f;
+		RuntimeNode->bResetOnBecomingRelevant   = true;
+	}
+	else
+	{
+		UE_LOG(LogAnimation, Warning,
+			TEXT("AnimDatabaseUtility::InsertPoseHistoryCollector — Collector node has no FAnimNode struct; using defaults"));
+	}
+	CollectorNode->ReconstructNode();
+
+	// 8. Rewire pins.
+	UEdGraphPin* CollectorSourceIn = CollectorNode->FindPin(TEXT("Source"), EGPD_Input);
+	UEdGraphPin* CollectorPoseOut  = CollectorNode->FindPin(TEXT("Pose"),   EGPD_Output);
+	if (!CollectorSourceIn || !CollectorPoseOut)
+	{
+		UE_LOG(LogAnimation, Error,
+			TEXT("AnimDatabaseUtility::InsertPoseHistoryCollector — Collector pins missing (Source=%p, Pose=%p)"),
+			CollectorSourceIn, CollectorPoseOut);
+		return false;
+	}
+
+	// Clear any stale links on the collector + on the downstream sink we are
+	// going to drive. Leave MMPoseOut alone — we want to retarget what it
+	// drives, but BreakAllPinLinks on the *sink* takes care of that side.
+	CollectorSourceIn->BreakAllPinLinks(/*bNotifyNodes=*/false);
+	CollectorPoseOut->BreakAllPinLinks(/*bNotifyNodes=*/false);
+	DownstreamSinkPin->BreakAllPinLinks(/*bNotifyNodes=*/false);
+
+	const UEdGraphSchema* Schema = AnimGraph->GetSchema();
+	auto Connect = [&](UEdGraphPin* From, UEdGraphPin* To, const TCHAR* Label) -> bool
+	{
+		bool bConnected = false;
+		if (Schema)
+		{
+			bConnected = Schema->TryCreateConnection(From, To);
+		}
+		if (!bConnected)
+		{
+			UE_LOG(LogAnimation, Warning,
+				TEXT("AnimDatabaseUtility::InsertPoseHistoryCollector — schema rejected %s; falling back to MakeLinkTo"),
+				Label);
+			From->MakeLinkTo(To);
+			bConnected = true;
+		}
+		return bConnected;
+	};
+
+	if (!Connect(MMPoseOut, CollectorSourceIn, TEXT("MM.Pose -> Collector.Source")))
+	{
+		return false;
+	}
+	if (!Connect(CollectorPoseOut, DownstreamSinkPin, TEXT("Collector.Pose -> downstream")))
+	{
+		return false;
+	}
+
+	UE_LOG(LogAnimation, Log,
+		TEXT("AnimDatabaseUtility::InsertPoseHistoryCollector: %s spliced (MM -> Collector -> %s.%s)"),
+		*AnimBP->GetName(),
+		*DownstreamSinkPin->GetOwningNode()->GetName(),
+		*DownstreamSinkPin->PinName.ToString());
+
+	// 9. Mark structurally modified + recompile so the cached generated class
+	//    picks up the new node graph.
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(AnimBP);
+
+	FCompilerResultsLog Results;
+	FKismetEditorUtilities::CompileBlueprint(AnimBP, EBlueprintCompileOptions::None, &Results);
+	const int32 ErrorCount   = Results.NumErrors;
+	const int32 WarningCount = Results.NumWarnings;
+	UE_LOG(LogAnimation, Log,
+		TEXT("AnimDatabaseUtility::InsertPoseHistoryCollector: Compiled %s (errors=%d, warnings=%d)"),
+		*AnimBP->GetName(), ErrorCount, WarningCount);
+
+	return ErrorCount == 0;
+
+#else
+	UE_LOG(LogAnimation, Warning,
+		TEXT("AnimDatabaseUtility::InsertPoseHistoryCollector is an editor-only operation."));
 	return false;
 #endif // WITH_EDITOR
 }

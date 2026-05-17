@@ -125,6 +125,43 @@ public:
 		FName RightJointBone);
 
 	/**
+	 * Inserts a UAnimGraphNode_PoseSearchHistoryCollector immediately downstream
+	 * of the existing MotionMatching node, splicing it into whatever pose link
+	 * MM currently feeds. Yields the chain:
+	 *
+	 *   MM -> Collector.Source -> Collector.Pose -> <whatever-was-after-MM>
+	 *
+	 * Examples after running on the two M5/M6/M9 AnimBPs:
+	 *   ABP_Footballer_MM:  MM -> Collector -> TwoBoneIK_L -> TwoBoneIK_R -> Root
+	 *   ABP_Goalkeeper:     MM -> Collector -> Root
+	 *
+	 * Why this fixes "LogPoseSearch: missing IPoseHistory":
+	 * FAnimNode_MotionMatching::UpdateAssetPlayer looks up an FPoseHistoryProvider
+	 * via Context.GetMessage<FPoseHistoryProvider>(). The history collector
+	 * publishes that provider into the graph context inside its Update_AnyThread
+	 * (TScopedGraphMessage) BEFORE recursing into its Source pin. Therefore the
+	 * collector must be the IMMEDIATE PARENT of MM in pose-flow update order:
+	 * placing the collector downstream of MM (collector.Source = MM.Pose) means
+	 * when the graph traverses Update from Root downwards, the collector pushes
+	 * the message and then calls Source.Update(Context), and MM's update sees
+	 * the collector's message live on the stack. The previous topology had no
+	 * collector at all, hence the warning + a stale/T-pose output.
+	 *
+	 * The collector is configured with bGenerateTrajectory = true so it
+	 * synthesises a trajectory from the AnimInstance's motion (the schema's
+	 * Trajectory feature channel needs future + past samples; we have no
+	 * upstream trajectory predictor wired). All other settings stay at default
+	 * (PoseCount=2 keeps memory minimal; SamplingInterval=0.04s = ~25 Hz).
+	 *
+	 * Idempotent: re-running won't duplicate the collector — finds the existing
+	 * UAnimGraphNode_PoseSearchHistoryCollector if present and reuses it.
+	 *
+	 * Returns true on success (BP compiles cleanly). Caller still needs to save.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Edge26 Anim")
+	static bool InsertPoseHistoryCollector(UAnimBlueprint* AnimBP);
+
+	/**
 	 * Saves the package containing AnimBP. Returns true on success.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Edge26 Anim")
