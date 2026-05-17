@@ -54,9 +54,14 @@ replaced with `Fixed64::operator*` to prevent int64 intermediate overflow.
 Spec: `docs/superpowers/specs/2026-05-15-phase2-spatial-ai-design.md`. Plan:
 `docs/superpowers/plans/2026-05-15-phase2-spatial-ai-plan.md`.
 
-We are at **Phase 3 — M4 blocked pending Game Animation Sample plugin install**.
-M1–M3 + M8 (BallContactIKComponent) complete. Remaining work (M4-M7, M9-M11)
-is asset-heavy and gated on the plugin. M12 (acceptance) follows. Spec at
+We are at **Phase 3 — M4 complete; advancing to M5 (ABP_Footballer_MM)**.
+M1–M4 + M8 (BallContactIKComponent) complete. M4 was unblocked by pivoting
+off the Game Animation Sample marketplace plugin to the project's existing
+`/Game/Characters/Mannequins/Anims/Unarmed/` locomotion set plus a headless
+C++/Python population path (UAnimDatabaseUtility wraps the public UE5.7
+`UPoseSearchDatabase::AddAnimationAsset` API). Remaining work (M5–M7,
+M9–M11) is still asset-heavy (editor AnimGraph wiring + Mixamo retargets).
+M12 (acceptance) follows. Spec at
 `docs/superpowers/specs/2026-05-17-phase3-animation-design.md`. Plan at
 `docs/superpowers/plans/2026-05-17-phase3-animation-plan.md`. Branch:
 `feat/phase3-animation`.
@@ -91,7 +96,7 @@ is asset-heavy and gated on the plugin. M12 (acceptance) follows. Spec at
 - [x] M1. RenderSnapshotBuffer + 200 ms delay wiring
 - [x] M2. Snapshot-diff event extraction (KickEvent, BallReceived, GoalkeeperSave)
 - [x] M3. FootballAnimInstance base class + trajectory generation
-- [ ] M4. Game Animation Sample import + MMDB_Outfield skeleton
+- [x] M4. Game Animation Sample import + MMDB_Outfield skeleton
 - [ ] M5. ABP_Footballer_MM motion-matching state tree
 - [ ] M6. Foot IK setup (TwoBoneIK per leg, ground-plane projection)
 - [ ] M7. Mixamo retarget + football overlays + anim notifies
@@ -144,3 +149,4 @@ is asset-heavy and gated on the plugin. M12 (acceptance) follows. Spec at
 - M3 landed: UFootballAnimInstance base class with TrajectoryVelocity/Acceleration/Samples (4 future points at +10/20/30/40 frames), Speed, bIsGrounded, PendingEvent queue. AFootballerVisual::OnAnimEvent → HandleAnimEvent → AnimInst->EnqueueEvent wiring. Ready for ABP_Footballer_MM to be re-parented in M5.
 - M8 landed (out-of-order — pure C++, doesn't need plugin): UBallContactIKComponent attached to AFootballerVisual; consumes Kick events to drive wind-up (alpha 0→1 over 18f) + contact (snap to ball) + follow-through (alpha 1→0 over 12f). 3 UE5 automation tests green (DelayRespected + EmitsKick + AlphaRampSchedule). 2 implementer-found bugs fixed inline: off-by-one in wind-up alpha (now divides by WindUpFrames+1 for proper end-of-window cap), `Super::TickComponent` guarded by IsRegistered() for NewObject-based unit tests.
 - Blocked: M4 needs Epic Game Animation Sample plugin (user must install via Edit→Plugins→Marketplace).
+- M4 unblocked + landed (headless instead of marketplace plugin): user installed PoseSearch but Game Animation Sample wasn't needed — the project already has motion-matchable locomotion at `/Game/Characters/Mannequins/Anims/Unarmed/`. Replaced the original "manual editor drag-drop" T4.2 with a fully headless C++/Python path. Built `UAnimDatabaseUtility` (UBlueprintFunctionLibrary in Edge26 module, editor-only via `Target.bBuildEditor` gate on the `PoseSearch` dep) exposing `CreateSchemaWithDefaultChannels` / `SetDatabaseSchema` / `AddSequenceToDatabase` / `SaveDatabaseAsset` to Python through the public UE5.7 `UPoseSearchDatabase::AddAnimationAsset(const FPoseSearchDatabaseAnimationAsset&)` API — no protected-bypass needed. Probed and confirmed Python's `set_editor_property("animation_assets", ...)` is blocked, hence the C++ wrapper. Two scripts produced the assets: `Scripts/editor/create_mmdb_outfield.py` (empty database, 1,195 B) + `Scripts/editor/populate_mmdb_outfield.py` (populated with 17 locomotion clips: MM_Idle + 4 walk cardinals + 4 walk diagonals + 4 jog cardinals + 4 jog diagonals; MMDB_Outfield.uasset grew to 13,133 B, MMSchema_Outfield.uasset new at 2,167 B). `AddDefaultChannels` adds Trajectory + Pose channels on `SK_Mannequin`. DDC index build deferred to first editor open (headless `SAVE_BulkDataByReference` suppresses async build — acceptable; Pose Search auto-rebuilds when opened). Edge26.uproject converted UTF-16 LE → UTF-8 because UBT refused to re-parse with the new `PoseSearch` dep. Editor build green. Approach is reusable for `MMDB_Goalkeeper` in M9.
