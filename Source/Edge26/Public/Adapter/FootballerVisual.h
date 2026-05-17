@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Pawn.h"
 #include "Animation/FootballerAnimEvents.h"
+#include "Animation/BallContactIKComponent.h"
 #include "FootballerVisual.generated.h"
 
 class USkeletalMeshComponent;
@@ -50,6 +51,9 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	TObjectPtr<class USimInputCollector> InputCollector;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	TObjectPtr<class UBallContactIKComponent> KickIK;
 
 protected:
 	virtual void BeginPlay() override;

@@ -50,6 +50,7 @@ AFootballerVisual::AFootballerVisual()
 	Camera->SetupAttachment(SpringArm);
 
 	InputCollector = CreateDefaultSubobject<USimInputCollector>(TEXT("InputCollector"));
+	KickIK = CreateDefaultSubobject<UBallContactIKComponent>(TEXT("KickIK"));
 }
 
 void AFootballerVisual::BeginPlay()
@@ -69,6 +70,12 @@ void AFootballerVisual::BeginPlay()
 
 void AFootballerVisual::HandleAnimEvent(const FAnimEventPayload& Event)
 {
+	// M8 P3: Kick events drive the foot-IK alpha curve.
+	if (Event.Kind == EFootballerAnimEvent::Kick && KickIK)
+	{
+		KickIK->StartKickMontage(Event);
+	}
+
 	if (auto* AnimInst = Cast<UFootballAnimInstance>(Mesh->GetAnimInstance()))
 	{
 		AnimInst->EnqueueEvent(Event);
