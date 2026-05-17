@@ -41,12 +41,15 @@ public class Edge26 : ModuleRules
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
 			"RHI",
-			"RenderCore"
+			"RenderCore",
+			"PoseSearch",
+			"StructUtils",
 		});
 
 		if (Target.bBuildEditor)
 		{
 			PrivateDependencyModuleNames.Add("UnrealEd");
+			PrivateDependencyModuleNames.Add("AssetTools");
 		}
 	}
 }
