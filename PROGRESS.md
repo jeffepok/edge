@@ -54,7 +54,7 @@ replaced with `Fixed64::operator*` to prevent int64 intermediate overflow.
 Spec: `docs/superpowers/specs/2026-05-15-phase2-spatial-ai-design.md`. Plan:
 `docs/superpowers/plans/2026-05-15-phase2-spatial-ai-plan.md`.
 
-We are at **Phase 3 M1 of M12** (RenderSnapshotBuffer). Spec at
+We are at **Phase 3 M2 of M12** (snapshot-diff event extraction). Spec at
 `docs/superpowers/specs/2026-05-17-phase3-animation-design.md`. Plan at
 `docs/superpowers/plans/2026-05-17-phase3-animation-plan.md`. Branch:
 `feat/phase3-animation`.
@@ -86,7 +86,7 @@ We are at **Phase 3 M1 of M12** (RenderSnapshotBuffer). Spec at
 - [x] M12. AI tuning pass + final acceptance
 
 ### Phase 3: Motion-matching animation + procedural ball-contact IK  ←  current  (render-side only per spec §3)
-- [ ] M1. RenderSnapshotBuffer + 200 ms delay wiring
+- [x] M1. RenderSnapshotBuffer + 200 ms delay wiring
 - [ ] M2. Snapshot-diff event extraction (KickEvent, BallReceived, GoalkeeperSave)
 - [ ] M3. FootballAnimInstance base class + trajectory generation
 - [ ] M4. Game Animation Sample import + MMDB_Outfield skeleton
@@ -135,3 +135,6 @@ We are at **Phase 3 M1 of M12** (RenderSnapshotBuffer). Spec at
 - M11 landed: ai_match_30s replay stream (1500-tick scripted human input — sprint held, direction cycles every 100 ticks, pass every 250); check_determinism.sh + update_determinism_baseline.sh both updated to the 4-stream gate; all baselines regenerated; gate PASS.
 - M12 landed: PIE soak surfaced ~20 production-grade bugs that all needed inline fixes. Major ones: SimMath::Sqrt didn't converge for distances > 100 cm (8-iter Newton from x/2 — Phase 1 only needed close-range sqrt; Phase 2 needs pitch-scale). Fixed with msb-based seed + 16 iters. BP_SoccerGameMode wasn't a subclass of ASoccerGameMode → re-parented via headless Python so StartPlay/PostLogin actually chain. Layer C was skipping the human, so when ChooseHumanControlled put the human on the carrier they never got EvaluateOnBall → ball just sat — fixed by running Layer C for everyone + OR'ing PendingButtons into the human's button frame. Loose-ball recovery: removed `PossessionTeam != 0xFF` gate from Press nomination so chasers fire on miscued passes too. Clump-stability: at exact overlap (d=0), separation now emits a deterministic perpendicular kick + 3× SprintSpeed off-zero so stacked players un-stick; MaybeApplyKick locks out re-kicks while ball is moving > 5 m/s. Codex P1/P2 review pass addressed: one-shot button latch, sim score sync from PIE goals, possession-stale clear on loose ball, rearmost-defender offside line, debug team-perspective clamp. Final pass: ball XY clamp at touchlines (Phase 3 will replace with set-pieces), intent target-hysteresis (2 m deadzone) to stop midfield-cell flicker. Tele-broadcast camera added so the user can observe the AI without F8-flying. Final §15 §6/§7 visually confirmed in PIE; §8 GK saves verified by automated test (PIE-rare due to current ball-contact aesthetics, which are intentionally deferred to Phase 3).
 - Phase 2 v0 acceptance: §15 #1, #2, #3, #4, #5, #6, #7, #10, #11 all green; #8 (GK saves) automated-test green, PIE-rare; #9 (manual switch) sim verified. Branch `feat/phase2-spatial-ai` is ready to push for the 3-OS CI matrix.
+
+### 2026-05-17 — Phase 3 session 1
+- M1 landed: FRenderSnapshotBuffer ring (25 entries, 500 ms history) + 200 ms (10-tick) delay wiring in SimHostSubsystem. EFootballerAnimEvent enum + FAnimEventPayload defined (diff logic stubbed for M2). 1 UE5 automation test passes (DelayRespected). Determinism gate green; lint OK; sim code untouched.
