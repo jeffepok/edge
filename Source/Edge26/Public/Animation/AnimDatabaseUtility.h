@@ -10,6 +10,7 @@ class UPoseSearchSchema;
 class UPoseSearchDatabase;
 class UAnimSequence;
 class USkeleton;
+class UAnimBlueprint;
 
 /**
  * Python/Blueprint-callable helpers for populating UPoseSearchDatabase assets
@@ -55,4 +56,38 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Edge26 Anim")
 	static bool SaveDatabaseAsset(UPoseSearchDatabase* DB);
+
+	/**
+	 * Wires the AnimGraph of an existing UAnimBlueprint to run Motion Matching.
+	 * Spawns a UAnimGraphNode_MotionMatching (or reuses an existing one — the
+	 * call is idempotent) and connects its Pose output to the existing Output
+	 * Pose (UAnimGraphNode_Root) input. Marks the BP structurally modified and
+	 * compiles it.
+	 *
+	 * Note on the Database parameter: it is accepted for API completeness but
+	 * not written by this C++ helper. The MotionMatching node's Database is
+	 * declared `PinShownByDefault`, so the runtime value lives on the pin
+	 * default rather than the struct field; assigning the FProperty directly
+	 * does not survive serialization. The companion Python script writes
+	 * Database via `set_editor_property` on the returned node struct, which
+	 * goes through the full property-set pipeline including pin defaults.
+	 *
+	 * The wired graph is the minimal pose chain: MotionMatching -> Root.
+	 * Trajectory data is consumed at runtime via the schema's feature channels
+	 * from the AnimInstance's inherited PoseHistory state; no explicit
+	 * trajectory pin wiring is required (the MotionMatching node does not
+	 * expose trajectory as a pin).
+	 *
+	 * Returns true on success. Callers should still save the package.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Edge26 Anim")
+	static bool WireMotionMatchingAnimGraph(
+		UAnimBlueprint* AnimBP,
+		UPoseSearchDatabase* Database);
+
+	/**
+	 * Saves the package containing AnimBP. Returns true on success.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Edge26 Anim")
+	static bool SaveAnimBlueprintAsset(UAnimBlueprint* AnimBP);
 };

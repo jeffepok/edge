@@ -11,6 +11,18 @@
 #include "UObject/Package.h"
 #include "UObject/SavePackage.h"
 #include "PackageHelperFunctions.h"
+
+#include "Animation/AnimBlueprint.h"
+#include "Animation/AnimNode_Root.h"
+#include "AnimGraphNode_Root.h"
+#include "AnimGraphNode_MotionMatching.h"
+#include "PoseSearch/AnimNode_MotionMatching.h"
+#include "Kismet2/BlueprintEditorUtils.h"
+#include "Kismet2/CompilerResultsLog.h"
+#include "Kismet2/KismetEditorUtilities.h"
+#include "EdGraph/EdGraph.h"
+#include "EdGraph/EdGraphPin.h"
+#include "EdGraphSchema_K2.h"
 #endif // WITH_EDITOR
 
 // -----------------------------------------------------------------------
@@ -195,6 +207,184 @@ bool UAnimDatabaseUtility::SaveDatabaseAsset(UPoseSearchDatabase* DB)
 
 #else
 	UE_LOG(LogAnimation, Warning, TEXT("AnimDatabaseUtility::SaveDatabaseAsset is an editor-only operation."));
+	return false;
+#endif // WITH_EDITOR
+}
+
+// -----------------------------------------------------------------------
+// WireMotionMatchingAnimGraph
+// -----------------------------------------------------------------------
+bool UAnimDatabaseUtility::WireMotionMatchingAnimGraph(
+	UAnimBlueprint* AnimBP,
+	UPoseSearchDatabase* Database)
+{
+#if WITH_EDITOR
+	if (!AnimBP)
+	{
+		UE_LOG(LogAnimation, Error, TEXT("AnimDatabaseUtility::WireMotionMatchingAnimGraph — AnimBP is null"));
+		return false;
+	}
+	if (!Database)
+	{
+		UE_LOG(LogAnimation, Error, TEXT("AnimDatabaseUtility::WireMotionMatchingAnimGraph — Database is null"));
+		return false;
+	}
+
+	// 1. Find the AnimGraph (the canonical "AnimGraph" UEdGraph on this blueprint).
+	UEdGraph* AnimGraph = nullptr;
+	for (UEdGraph* G : AnimBP->FunctionGraphs)
+	{
+		if (G && G->GetFName() == TEXT("AnimGraph"))
+		{
+			AnimGraph = G;
+			break;
+		}
+	}
+	if (!AnimGraph)
+	{
+		UE_LOG(LogAnimation, Error, TEXT("AnimDatabaseUtility::WireMotionMatchingAnimGraph — AnimGraph not found on %s"), *AnimBP->GetName());
+		return false;
+	}
+
+	// 2. Find the existing Root node (created by AnimationGraphSchema::CreateDefaultNodesForGraph).
+	UAnimGraphNode_Root* RootNode = nullptr;
+	for (UEdGraphNode* N : AnimGraph->Nodes)
+	{
+		if (UAnimGraphNode_Root* AsRoot = Cast<UAnimGraphNode_Root>(N))
+		{
+			RootNode = AsRoot;
+			break;
+		}
+	}
+	if (!RootNode)
+	{
+		UE_LOG(LogAnimation, Error, TEXT("AnimDatabaseUtility::WireMotionMatchingAnimGraph — no AnimGraphNode_Root in AnimGraph"));
+		return false;
+	}
+
+	// 3. Find or spawn a MotionMatching node. Idempotent.
+	UAnimGraphNode_MotionMatching* MMNode = nullptr;
+	for (UEdGraphNode* N : AnimGraph->Nodes)
+	{
+		if (UAnimGraphNode_MotionMatching* AsMM = Cast<UAnimGraphNode_MotionMatching>(N))
+		{
+			MMNode = AsMM;
+			break;
+		}
+	}
+	if (!MMNode)
+	{
+		FGraphNodeCreator<UAnimGraphNode_MotionMatching> NodeCreator(*AnimGraph);
+		MMNode = NodeCreator.CreateNode(/*bSelectNewNode=*/false);
+		NodeCreator.Finalize();
+
+		// Lay out so the MM node sits to the left of the Root.
+		MMNode->NodePosX = RootNode->NodePosX - 360;
+		MMNode->NodePosY = RootNode->NodePosY;
+
+		UE_LOG(LogAnimation, Log, TEXT("AnimDatabaseUtility: Spawned UAnimGraphNode_MotionMatching in %s"), *AnimBP->GetName());
+	}
+	else
+	{
+		UE_LOG(LogAnimation, Log, TEXT("AnimDatabaseUtility: Reusing existing UAnimGraphNode_MotionMatching in %s"), *AnimBP->GetName());
+	}
+
+	// 4. The MotionMatching node's Database field is private on both
+	//    UAnimGraphNode_MotionMatching::Node and FAnimNode_MotionMatching::Database,
+	//    AND Database carries `meta=(PinShownByDefault)` — meaning the actual
+	//    runtime value comes from the pin default, not the struct field.
+	//    Direct FProperty writes here do not persist through serialization.
+	//    The Python wrapper assigns Database via set_editor_property on the
+	//    returned struct (which goes through the full Edit pipeline including
+	//    pin default propagation). The C++ helper only spawns + connects.
+	//
+	//    Refresh the node so pin layout is up to date for the caller.
+	MMNode->ReconstructNode();
+
+	// 5. Connect MM "Pose" output → Root "Result" input.
+	UEdGraphPin* MMOut    = MMNode->FindPin(TEXT("Pose"),   EGPD_Output);
+	UEdGraphPin* RootIn   = RootNode->FindPin(TEXT("Result"), EGPD_Input);
+	if (!MMOut || !RootIn)
+	{
+		UE_LOG(LogAnimation, Error, TEXT("AnimDatabaseUtility::WireMotionMatchingAnimGraph — could not find Pose/Result pins (MMOut=%p, RootIn=%p)"), MMOut, RootIn);
+		return false;
+	}
+
+	// Break any pre-existing connections on Root.Result so we don't pile up
+	// duplicate links on repeat runs.
+	RootIn->BreakAllPinLinks(/*bNotifyNodes=*/false);
+
+	// Use the schema's MakeConnection so the graph notifies/validates correctly.
+	bool bConnected = false;
+	if (const UEdGraphSchema* Schema = AnimGraph->GetSchema())
+	{
+		bConnected = Schema->TryCreateConnection(MMOut, RootIn);
+	}
+	if (!bConnected)
+	{
+		UE_LOG(LogAnimation, Warning, TEXT("AnimDatabaseUtility::WireMotionMatchingAnimGraph — schema rejected connection; falling back to MakeLinkTo"));
+		MMOut->MakeLinkTo(RootIn);
+	}
+
+	// 6. Mark BP structurally modified and trigger a compile so the cached
+	//    generated class is up to date for downstream tooling.
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(AnimBP);
+
+	FCompilerResultsLog Results;
+	FKismetEditorUtilities::CompileBlueprint(AnimBP, EBlueprintCompileOptions::None, &Results);
+	const int32 ErrorCount   = Results.NumErrors;
+	const int32 WarningCount = Results.NumWarnings;
+	UE_LOG(LogAnimation, Log, TEXT("AnimDatabaseUtility: Compiled %s (errors=%d, warnings=%d)"),
+		*AnimBP->GetName(), ErrorCount, WarningCount);
+
+	return ErrorCount == 0;
+
+#else
+	UE_LOG(LogAnimation, Warning, TEXT("AnimDatabaseUtility::WireMotionMatchingAnimGraph is an editor-only operation."));
+	return false;
+#endif // WITH_EDITOR
+}
+
+// -----------------------------------------------------------------------
+// SaveAnimBlueprintAsset
+// -----------------------------------------------------------------------
+bool UAnimDatabaseUtility::SaveAnimBlueprintAsset(UAnimBlueprint* AnimBP)
+{
+	if (!AnimBP)
+	{
+		UE_LOG(LogAnimation, Error, TEXT("AnimDatabaseUtility::SaveAnimBlueprintAsset — AnimBP is null"));
+		return false;
+	}
+
+#if WITH_EDITOR
+	UPackage* Pkg = AnimBP->GetOutermost();
+	if (!Pkg)
+	{
+		UE_LOG(LogAnimation, Error, TEXT("AnimDatabaseUtility::SaveAnimBlueprintAsset — could not get package for %s"), *AnimBP->GetName());
+		return false;
+	}
+
+	const FString PackageName     = Pkg->GetName();
+	const FString PackageFilename = FPackageName::LongPackageNameToFilename(
+		PackageName, FPackageName::GetAssetPackageExtension());
+
+	FSavePackageArgs SaveArgs;
+	SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
+	SaveArgs.SaveFlags     = SAVE_NoError;
+	const bool bSuccess = UPackage::SavePackage(Pkg, AnimBP, *PackageFilename, SaveArgs);
+
+	if (bSuccess)
+	{
+		UE_LOG(LogAnimation, Log, TEXT("AnimDatabaseUtility: Saved %s"), *PackageName);
+	}
+	else
+	{
+		UE_LOG(LogAnimation, Error, TEXT("AnimDatabaseUtility: Failed to save %s"), *PackageName);
+	}
+	return bSuccess;
+
+#else
+	UE_LOG(LogAnimation, Warning, TEXT("AnimDatabaseUtility::SaveAnimBlueprintAsset is an editor-only operation."));
 	return false;
 #endif // WITH_EDITOR
 }

@@ -50,6 +50,11 @@ public class Edge26 : ModuleRules
 		{
 			PrivateDependencyModuleNames.Add("UnrealEd");
 			PrivateDependencyModuleNames.Add("AssetTools");
+			// AnimGraph editing for headless AnimBP wiring (UAnimDatabaseUtility).
+			PrivateDependencyModuleNames.Add("AnimGraph");
+			PrivateDependencyModuleNames.Add("BlueprintGraph");
+			PrivateDependencyModuleNames.Add("KismetCompiler");
+			PrivateDependencyModuleNames.Add("PoseSearchEditor");
 		}
 	}
 }
