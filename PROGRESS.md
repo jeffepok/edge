@@ -54,7 +54,9 @@ replaced with `Fixed64::operator*` to prevent int64 intermediate overflow.
 Spec: `docs/superpowers/specs/2026-05-15-phase2-spatial-ai-design.md`. Plan:
 `docs/superpowers/plans/2026-05-15-phase2-spatial-ai-plan.md`.
 
-We are at **Phase 3 M4 of M12** (Game Animation Sample import + MMDB_Outfield skeleton). Spec at
+We are at **Phase 3 — M4 blocked pending Game Animation Sample plugin install**.
+M1–M3 + M8 (BallContactIKComponent) complete. Remaining work (M4-M7, M9-M11)
+is asset-heavy and gated on the plugin. M12 (acceptance) follows. Spec at
 `docs/superpowers/specs/2026-05-17-phase3-animation-design.md`. Plan at
 `docs/superpowers/plans/2026-05-17-phase3-animation-plan.md`. Branch:
 `feat/phase3-animation`.
@@ -93,7 +95,7 @@ We are at **Phase 3 M4 of M12** (Game Animation Sample import + MMDB_Outfield sk
 - [ ] M5. ABP_Footballer_MM motion-matching state tree
 - [ ] M6. Foot IK setup (TwoBoneIK per leg, ground-plane projection)
 - [ ] M7. Mixamo retarget + football overlays + anim notifies
-- [ ] M8. BallContactIKComponent + kick-montage IK alpha
+- [x] M8. BallContactIKComponent + kick-montage IK alpha
 - [ ] M9. Goalkeeper subclass + MMDB_Goalkeeper + GK animations
 - [ ] M10. Anim event hookup (KickEvent → montage trigger)
 - [ ] M11. Re-place 22 BP_Footballer instances with role-correct anim BPs
@@ -140,3 +142,5 @@ We are at **Phase 3 M4 of M12** (Game Animation Sample import + MMDB_Outfield sk
 - M1 landed: FRenderSnapshotBuffer ring (25 entries, 500 ms history) + 200 ms (10-tick) delay wiring in SimHostSubsystem. EFootballerAnimEvent enum + FAnimEventPayload defined (diff logic stubbed for M2). 1 UE5 automation test passes (DelayRespected). Determinism gate green; lint OK; sim code untouched.
 - M2 landed: RenderSnapshotBuffer.EmitEvents now diffs Curr vs LastConsumed and emits Kick (rising PendingButtons), BallReceived (possession change while ball airborne), GoalkeeperSave (ball stopped + GK possession), GoalkeeperCatch (GK gains possession non-save). FAnimEventPayload broadcast via AFootballerVisual::OnAnimEvent. 2 UE5 automation tests green (DelayRespected + EmitsKick).
 - M3 landed: UFootballAnimInstance base class with TrajectoryVelocity/Acceleration/Samples (4 future points at +10/20/30/40 frames), Speed, bIsGrounded, PendingEvent queue. AFootballerVisual::OnAnimEvent → HandleAnimEvent → AnimInst->EnqueueEvent wiring. Ready for ABP_Footballer_MM to be re-parented in M5.
+- M8 landed (out-of-order — pure C++, doesn't need plugin): UBallContactIKComponent attached to AFootballerVisual; consumes Kick events to drive wind-up (alpha 0→1 over 18f) + contact (snap to ball) + follow-through (alpha 1→0 over 12f). 3 UE5 automation tests green (DelayRespected + EmitsKick + AlphaRampSchedule). 2 implementer-found bugs fixed inline: off-by-one in wind-up alpha (now divides by WindUpFrames+1 for proper end-of-window cap), `Super::TickComponent` guarded by IsRegistered() for NewObject-based unit tests.
+- Blocked: M4 needs Epic Game Animation Sample plugin (user must install via Edit→Plugins→Marketplace).
