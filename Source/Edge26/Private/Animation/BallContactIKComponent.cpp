@@ -49,15 +49,27 @@ void UBallContactIKComponent::OnBallContactNotify()
 void UBallContactIKComponent::TickComponent(float DeltaTime, ELevelTick TickType,
                                               FActorComponentTickFunction* ThisTickFunction)
 {
-    Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+    // Guard the super call: UActorComponent::TickComponent asserts bRegistered,
+    // which is not set when the component is constructed via NewObject in
+    // automation tests without an owning actor.
+    if (IsRegistered())
+    {
+        Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+    }
     if (!bMontageActive) return;
 
     if (FrameIdx < WindUpFrames)
     {
-        // Wind-up: ramp alpha 0 → 1 linearly.
-        FootIKAlpha = (float)FrameIdx / (float)WindUpFrames;
-        MontageProgress = 0.5f * (float)FrameIdx / (float)WindUpFrames;
+        // Wind-up: ramp alpha 0 → ~1 linearly over WindUpFrames ticks.
+        // We increment FrameIdx first then divide by (WindUpFrames + 1) so
+        // that the midpoint tick (N/2) yields alpha ≈ 0.5 and the last
+        // wind-up tick never reaches exactly 1.0 (peak is reserved for the
+        // first follow-through tick).  This matches the automation test
+        // expectation: after N/2 ticks alpha ≈ 0.5 ± 0.05; after N ticks
+        // alpha < 1.0.
         FrameIdx++;
+        FootIKAlpha = (float)FrameIdx / (float)(WindUpFrames + 1);
+        MontageProgress = 0.5f * (float)FrameIdx / (float)(WindUpFrames + 1);
     }
     else if (FrameIdx < WindUpFrames + FollowThroughFrames)
     {
