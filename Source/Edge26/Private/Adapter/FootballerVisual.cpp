@@ -98,6 +98,10 @@ void AFootballerVisual::DriveFromSim(const FTransform& InterpolatedTransform)
 	RightSpeed   = FVector::DotProduct(LinVel, Right);
 	RelativeDirection = FMath::RadiansToDegrees(FMath::Atan2(RightSpeed, ForwardSpeed));
 
+	// Expose to AActor::GetVelocity() — motion-matching's PoseSearchHistoryCollector
+	// reads this to synthesize its trajectory query (we have no UCharacterMovementComponent).
+	SimTrackedVelocity = LinVel;
+
 	SetActorTransform(InterpolatedTransform);
 	LastDrivenTransform = InterpolatedTransform;
 }

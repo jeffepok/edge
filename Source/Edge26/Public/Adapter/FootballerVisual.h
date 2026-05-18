@@ -67,6 +67,14 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	TObjectPtr<UCameraComponent> Camera;
 
+public:
+	// Sim-tracked velocity (computed each frame from actor location delta in
+	// DriveFromSim). Override AActor::GetVelocity() so PoseSearchHistoryCollector's
+	// bGenerateTrajectory mode reads a meaningful value instead of the engine
+	// default (zero — we have no UCharacterMovementComponent).
+	virtual FVector GetVelocity() const override { return SimTrackedVelocity; }
+
 private:
 	FTransform LastDrivenTransform;
+	FVector SimTrackedVelocity = FVector::ZeroVector;
 };
