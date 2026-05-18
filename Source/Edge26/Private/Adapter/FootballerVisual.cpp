@@ -102,6 +102,19 @@ void AFootballerVisual::DriveFromSim(const FTransform& InterpolatedTransform)
 	// reads this to synthesize its trajectory query (we have no UCharacterMovementComponent).
 	SimTrackedVelocity = LinVel;
 
+	// Propagate sim velocity to component fields so engine systems that read
+	// Component->GetComponentVelocity() (notably FAnimNode_PoseSearchHistoryCollector
+	// when bGenerateTrajectory=true) see a meaningful value. Our sim-driven actors
+	// don't have a UCharacterMovementComponent that would normally populate this.
+	if (USceneComponent* RootComp = GetRootComponent())
+	{
+		RootComp->ComponentVelocity = SimTrackedVelocity;
+	}
+	if (USkeletalMeshComponent* MeshComp = FindComponentByClass<USkeletalMeshComponent>())
+	{
+		MeshComp->ComponentVelocity = SimTrackedVelocity;
+	}
+
 	SetActorTransform(InterpolatedTransform);
 	LastDrivenTransform = InterpolatedTransform;
 }
